@@ -230,7 +230,6 @@ aiSend.addEventListener("click", async ()=>{
   appendMessage(ans ?? "No response.", "bot");
 });
 
-// Enter key trigger
 aiInput.addEventListener("keydown", e => { if(e.key === "Enter") aiSend.click() });
 
 const aiMin = document.getElementById("aiMin");
