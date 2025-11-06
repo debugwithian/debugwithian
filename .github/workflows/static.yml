@@ -17,29 +17,27 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       # Step 1: Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Step 2: Inject Groq API Key into config.js in build folder
+      # Step 2: Inject Groq API Key into config.js
       - name: Inject Groq API Key
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           mkdir -p dist
           echo "const GROQ_API_KEY = \"${GROQ_API_KEY}\";" > dist/config.js
-          echo "Files in dist:"
-          ls -la dist
           echo "✅ Groq key injected into dist/config.js"
 
-      # Step 3: Copy all site files into dist folder
+      # Step 3: Copy site files to dist
       - name: Prepare site files
         run: |
           cp index.html dist/
           cp script.js dist/
           cp style.css dist/
-          # Copy other static assets if any
           mkdir -p dist/assets
           cp -r assets/* dist/assets || echo "No assets folder"
 
