@@ -4,443 +4,138 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rene Benje Ian Diamante Portfolio</title>
-<!-- Bootstrap CSS -->
+
+<!-- Bootstrap -->
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <!-- Google Fonts -->
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
 <style>
 body {
-    font-family: 'Roboto', sans-serif;
-    background: #f7f7f7;
-    color: #333;
-    overflow-x: hidden;
+  font-family: 'Roboto', sans-serif;
+  color: #333;
+  background: linear-gradient(135deg, #e0f2ff, #f8faff, #dceeff);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
+  overflow-x: hidden;
 }
-h1,h2,h3,h4,h5 {
-    font-family: 'Poppins', sans-serif;
-    color: #1c1c1c;
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
-.section-title {
-    margin-bottom: 2rem;
-    position: relative;
-}
-.section-title::after {
-    content: '';
-    display: block;
-    width: 60px;
-    height: 3px;
-    background-color: #0d6efd;
-    margin-top: 0.5rem;
-    border-radius: 2px;
-}
-.card-hover {
-    transition: all 0.3s ease;
-}
-.card-hover:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 20px rgba(0,0,0,0.15);
-}
-.cv-btn {
-    position: fixed;
-    bottom: 30px;
-    right: 30px;
-    background-color: #0d6efd;
-    color: #fff;
-    padding: 0.8rem 1.2rem;
-    border-radius: 50px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    z-index: 1000;
-    transition: transform 0.3s;
-    text-decoration: none;
-}
-.cv-btn:hover {
-    transform: scale(1.1);
-}
-.sidebar {
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    background-color: #fff;
-    padding: 2rem 1rem;
-    border-right: 1px solid #ddd;
-}
-.sidebar a {
-    display: block;
-    margin: 1rem 0;
-    color: #555;
-    font-weight: 500;
-    transition: color 0.3s;
-    text-decoration: none;
-}
-.sidebar a:hover {
-    color: #0d6efd;
-    text-decoration: none;
-}
-.timeline {
-    position: relative;
-    padding-left: 2rem;
-}
-.timeline::before {
-    content: '';
-    position: absolute;
-    left: 0.75rem;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    background-color: #0d6efd;
-    border-radius: 2px;
-}
-.timeline-event {
-    position: relative;
-    margin-bottom: 2rem;
-}
-.timeline-event::before {
-    content: '';
-    position: absolute;
-    left: -28px;
-    top: 0;
-    width: 20px;
-    height: 20px;
-    background-color: #0d6efd;
-    border-radius: 50%;
-}
-.timeline::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 25px;
-  width: 3px;
-  height: 100%;
-  background: linear-gradient(to bottom, #0d6efd, #6c757d);
-}
-.timeline-item {
-  position: relative;
-  margin-left: 20px;
-  border-left: 3px solid transparent;
-}
-.timeline-item::before {
-  content: '';
-  position: absolute;
-  left: -35px;
-  top: 1rem;
-  width: 15px;
-  height: 15px;
-  background: #0d6efd;
+.bg-shape {
+  position: fixed;
   border-radius: 50%;
-  box-shadow: 0 0 0 3px #fff;
-  transition: all 0.3s ease;
+  opacity: 0.15;
+  animation: float 20s infinite;
+  z-index: 0;
 }
-.timeline-item:hover::before {
-  transform: scale(1.2);
-  background: #0056b3;
+.bg-shape:nth-child(1) { width: 120px; height: 120px; background: #0d6efd; top: 15%; left: 10%; }
+.bg-shape:nth-child(2) { width: 80px; height: 80px; background: #6c63ff; top: 40%; right: 15%; }
+.bg-shape:nth-child(3) { width: 150px; height: 150px; background: #74c0fc; bottom: 10%; left: 20%; }
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(-20px) rotate(10deg); }
 }
+
+/* XP Bar */
+#xpBarContainer { position: fixed; top: 0; left: 0; width: 100%; height: 6px; background: rgba(255,255,255,0.5); z-index: 2000; }
+#xpBar { height: 100%; background: linear-gradient(to right, #0d6efd, #4dabf7); width: 0%; transition: width 0.2s; }
+
+/* Sections */
+section { opacity: 0; transform: translateY(30px); transition: all 0.8s ease-out; }
+section.visible { opacity: 1; transform: translateY(0); }
+
+/* Sidebar */
+.sidebar { position: sticky; top: 0; height: 100vh; background-color: rgba(255,255,255,0.85); backdrop-filter: blur(8px); padding: 2rem 1rem; border-right: 1px solid #ddd; }
+.sidebar a { display: block; margin: 1rem 0; color: #555; font-weight: 500; text-decoration: none; transition: color 0.3s, transform 0.3s; }
+.sidebar a:hover { color: #0d6efd; transform: translateX(5px); }
+
+/* Cards */
+.card-hover { background: rgba(255,255,255,0.8); border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05); transition: all 0.4s ease; backdrop-filter: blur(6px); }
+.card-hover:hover { transform: translateY(-6px) scale(1.02); box-shadow: 0 12px 24px rgba(0,0,0,0.15); }
+
+/* Skill bars */
+.skill-bar { background: rgba(0,0,0,0.05); border-radius: 10px; height: 10px; margin-top: 5px; overflow: hidden; }
+.skill-progress { height: 10px; border-radius: 10px; background: linear-gradient(90deg, #0d6efd, #74c0fc); width: 0; transition: width 1s ease; }
+
+/* Toasts */
+.toast { position: fixed; top: 20px; right: 20px; background: #0d6efd; color: #fff; padding: 10px 20px; border-radius: 50px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); opacity: 0; transform: translateY(-20px); transition: all 0.5s ease; z-index: 3000; }
+.toast.show { opacity: 1; transform: translateY(0); }
+
+/* CV Button */
+.cv-btn { position: fixed; bottom: 30px; right: 30px; background-color: #0d6efd; color: #fff; padding: 0.8rem 1.2rem; border-radius: 50px; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 1000; text-decoration: none; transition: transform 0.3s, background 0.3s; }
+.cv-btn:hover { transform: scale(1.1); background: #0056b3; }
+
+/* AI Assistant */
+#ai-section { background: rgba(255,255,255,0.9); padding: 2rem; border-radius: 1rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.chat-box { height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 1rem; border-radius: 0.5rem; background: #f8f9fa; }
+.message { margin-bottom: 1rem; }
+.user-msg { text-align: right; color: #0d6efd; }
+.ai-msg { text-align: left; color: #333; }
 </style>
 </head>
-<body>
 
-<!-- Floating CV Button -->
-<a href="Rene_Diamante_CV.pdf" class="cv-btn" download>
-    <i class="fas fa-download"></i> Download CV
-</a>
+<body>
+<div class="bg-shape"></div><div class="bg-shape"></div><div class="bg-shape"></div>
+<div id="xpBarContainer"><div id="xpBar"></div></div>
+
+<a href="Rene_Diamante_CV.pdf" class="cv-btn" download><i class="fas fa-scroll"></i> Quest Log (CV)</a>
 
 <div class="container-fluid">
   <div class="row">
-
-    <!-- Sidebar -->
     <nav class="col-md-2 sidebar d-none d-md-block">
       <h3 class="fw-bold">RBID</h3>
       <a href="#about"><i class="fas fa-user me-2"></i>About</a>
       <a href="#tech"><i class="fas fa-laptop-code me-2"></i>Tech Stack</a>
-      <a href="#projects"><i class="fas fa-briefcase me-2"></i>Projects</a>
       <a href="#experience"><i class="fas fa-history me-2"></i>Experience</a>
+      <a href="#ai-section"><i class="fas fa-robot me-2"></i>Ask AI</a>
       <a href="#contact"><i class="fas fa-envelope me-2"></i>Contact</a>
     </nav>
 
-    <!-- Main Content -->
     <main class="col-md-10 col-12 py-4 px-5">
-
-      <!-- About Section -->
       <section id="about" class="my-5">
         <h2 class="section-title">About Me</h2>
-        <p class="lead">
-            I'm <strong>Rene Benje Ian Diamante</strong>, a Senior Software Full Stack Engineer with more than 10 years of experience in Web Development, Microservices, PHP, Java, Python, and Salesforce integration. I specialize in creating dynamic reports, leading global development teams, and building scalable, high-performance web solutions that drive business growth and efficiency.
-        </p>
-
-        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mt-4">
-          <div class="col">
-            <div class="card card-hover h-100 text-center p-3">
-              <i class="fas fa-code fa-3x mb-3 text-primary"></i>
-              <h5>Web Development</h5>
-              <p>PHP, Java, Python, JavaScript frameworks, HTML/CSS, React.js, Laravel, Symfony.</p>
-            </div>
-          </div>
-          <div class="col">
-            <div class="card card-hover h-100 text-center p-3">
-              <i class="fas fa-plug fa-3x mb-3 text-primary"></i>
-              <h5>Microservices & API</h5>
-              <p>Maintained 70+ microservices, Salesforce API integration, Email notifications, and automation.</p>
-            </div>
-          </div>
-          <div class="col">
-            <div class="card card-hover h-100 text-center p-3">
-              <i class="fas fa-chart-line fa-3x mb-3 text-primary"></i>
-              <h5>Data & Reporting</h5>
-              <p>Data visualization using Highcharts, Konva JS automation builder, and ARIA-compliant reporting.</p>
-            </div>
-          </div>
-          <div class="col">
-            <div class="card card-hover h-100 text-center p-3">
-              <i class="fas fa-users fa-3x mb-3 text-primary"></i>
-              <h5>Team Leadership</h5>
-              <p>Directed multiple micro-teams across APAC, EMEA, and LATAM, ensuring smooth project execution.</p>
-            </div>
-          </div>
-          <div class="col">
-            <div class="card card-hover h-100 text-center p-3">
-              <i class="fas fa-database fa-3x mb-3 text-primary"></i>
-              <h5>Cloud & DB</h5>
-              <p>AWS DynamoDB, Elasticsearch, MySQL, server instance management, and cloud infrastructure.</p>
-            </div>
-          </div>
-        </div>
+        <p class="lead">I'm <strong>Rene Benje Ian Diamante</strong>, a Level 10 Full Stack Engineer with 10+ years of experience in Web Development, Microservices, and Salesforce integration.</p>
       </section>
 
-      <!-- Tech Stack Section -->
       <section id="tech" class="my-5">
-        <h2 class="section-title">Tech Stack</h2>
-        <div class="d-flex flex-wrap gap-3 mt-3">
-          <span class="badge bg-primary text-white p-2"><i class="fab fa-php"></i> PHP / Symfony / Laravel</span>
-          <span class="badge bg-primary text-white p-2"><i class="fab fa-java"></i> Java / Spring Boot</span>
-          <span class="badge bg-primary text-white p-2"><i class="fab fa-python"></i> Python / Flask / Django</span>
-          <span class="badge bg-primary text-white p-2"><i class="fab fa-js-square"></i> JavaScript / React.js / jQuery</span>
-          <span class="badge bg-primary text-white p-2"><i class="fas fa-database"></i> MySQL / SQL</span>
-          <span class="badge bg-primary text-white p-2"><i class="fas fa-chart-line"></i> Highcharts / Konva JS</span>
-          <span class="badge bg-primary text-white p-2"><i class="fab fa-salesforce"></i> Salesforce Integration</span>
-          <span class="badge bg-primary text-white p-2"><i class="fas fa-plug"></i> API Development</span>
-          <span class="badge bg-primary text-white p-2"><i class="fas fa-chart-pie"></i> DataDog Metrics</span>
-        </div>
+        <h2 class="section-title">Tech Stack XP</h2>
+        <p><i class="fab fa-php text-primary"></i> PHP / Laravel / Symfony</p><div class="skill-bar"><div class="skill-progress" data-width="95%"></div></div>
+        <p class="mt-3"><i class="fab fa-java text-primary"></i> Java / Spring Boot</p><div class="skill-bar"><div class="skill-progress" data-width="90%"></div></div>
       </section>
 
-      <!-- Projects Section -->
-      <section id="experience" class="py-5">
-          <div class="container">
-            <h2 class="mb-4 fw-bold text-primary">Experience</h2>
-        
-            <div class="timeline position-relative">
-        
-              <!-- Indeed -->
-              <div class="timeline-item mb-4 p-4 bg-light rounded shadow-sm">
-                <div class="d-flex justify-content-between align-items-center">
-                  <h4 class="fw-semibold mb-0">Sr. Software Engineer — Indeed</h4>
-                  <span class="text-muted small">Mar 2021 – Present</span>
-                </div>
-                <button class="btn btn-link text-decoration-none mt-2 p-0 text-primary" data-bs-toggle="collapse" data-bs-target="#indeedDetails">
-                  View Details
-                </button>
-                <div id="indeedDetails" class="collapse mt-2">
-                  <ul class="mb-0">
-                    <li>Expertly manage and generate DataDog Metrics for enhanced reporting capabilities.</li>
-                    <li>Skillfully modify and update the Indeed CRM to optimize customer relationship management.</li>
-                    <li>Oversee server instances on MARVIN ensuring robust, scalable infrastructure.</li>
-                    <li>Develop and maintain a reliable API for Email Alert Notifications.</li>
-                    <li>Architect specialized APIs for Indeed CRM integration.</li>
-                    <li>Administer AdCentral Services repositories and maintain 70+ microservices.</li>
-                    <li>Ensure A11Y / ARIA compliance and web accessibility across multiple sites.</li>
-                    <li>Lead multi-regional teams across APAC, EMEA, and LATAM.</li>
-                    <li>Reverse-engineer Salesforce systems and maintain cross-stack microservices (PHP, Java, Python).</li>
-                  </ul>
-                </div>
-              </div>
-        
-              <!-- Zymplify -->
-              <div class="timeline-item mb-4 p-4 bg-light rounded shadow-sm">
-                <div class="d-flex justify-content-between align-items-center">
-                  <h4 class="fw-semibold mb-0">Sr. PHP Developer — Zymplify</h4>
-                  <span class="text-muted small">Aug 2019 – Oct 2024</span>
-                </div>
-                <button class="btn btn-link text-decoration-none mt-2 p-0 text-primary" data-bs-toggle="collapse" data-bs-target="#zymplifyDetails">
-                  View Details
-                </button>
-                <div id="zymplifyDetails" class="collapse mt-2">
-                  <ul class="mb-0">
-                    <li>Developed client-specific functionalities, improving UX and efficiency.</li>
-                    <li>Created dashboards and automation builders using Highcharts and Konva.js.</li>
-                    <li>Integrated multimedia from Canva, Pexels, Pixabay, and Unsplash.</li>
-                    <li>Optimized SQL performance and ORM-based APIs with Symfony & native PHP.</li>
-                    <li>Conducted penetration testing, handled bugs, and managed Zym.ai platform.</li>
-                  </ul>
-                </div>
-              </div>
-        
-              <!-- Shore Business Solution -->
-              <div class="timeline-item mb-4 p-4 bg-light rounded shadow-sm">
-                <div class="d-flex justify-content-between align-items-center">
-                  <h4 class="fw-semibold mb-0">Backend PHP Developer — Shore Business Solution (Yomojo)</h4>
-                  <span class="text-muted small">Jun 2018 – Jul 2019</span>
-                </div>
-                <button class="btn btn-link text-decoration-none mt-2 p-0 text-primary" data-bs-toggle="collapse" data-bs-target="#shoreDetails">
-                  View Details
-                </button>
-                <div id="shoreDetails" class="collapse mt-2">
-                  <ul class="mb-0">
-                    <li>Maintained Laravel and CodeIgniter apps for Family Eye and Yomojo.</li>
-                    <li>Integrated AWS DynamoDB and Elasticsearch for log storage.</li>
-                    <li>Developed push notifications (GCM/APN) and API reporting tools.</li>
-                    <li>Managed Palo Alto Firewall via API and optimized add-on features.</li>
-                  </ul>
-                </div>
-              </div>
-        
-              <!-- Integration Support Engineer -->
-              <div class="timeline-item mb-4 p-4 bg-light rounded shadow-sm">
-                <div class="d-flex justify-content-between align-items-center">
-                  <h4 class="fw-semibold mb-0">Integration Support Engineer II</h4>
-                  <span class="text-muted small">Nov 2017 – Jun 2018</span>
-                </div>
-                <button class="btn btn-link text-decoration-none mt-2 p-0 text-primary" data-bs-toggle="collapse" data-bs-target="#integrationDetails">
-                  View Details
-                </button>
-                <div id="integrationDetails" class="collapse mt-2">
-                  <ul class="mb-0">
-                    <li>Created and tested plugins for major e-commerce platforms (Magento, PrestaShop, OpenCart).</li>
-                    <li>Ensured API compatibility and optimized recurring payment systems.</li>
-                    <li>Developed documentation and integration guides for developers.</li>
-                  </ul>
-                </div>
-              </div>
-        
-              <!-- BACIWA -->
-              <div class="timeline-item mb-4 p-4 bg-light rounded shadow-sm">
-                <div class="d-flex justify-content-between align-items-center">
-                  <h4 class="fw-semibold mb-0">IT Section Supervisor & App Developer — BACIWA</h4>
-                  <span class="text-muted small">Jan 2016 – Jul 2017</span>
-                </div>
-                <button class="btn btn-link text-decoration-none mt-2 p-0 text-primary" data-bs-toggle="collapse" data-bs-target="#baciwaDetails">
-                  View Details
-                </button>
-                <div id="baciwaDetails" class="collapse mt-2">
-                  <ul class="mb-0">
-                    <li>Developed Android billing & document management systems.</li>
-                    <li>Implemented audit trails, privacy levels, and automation tools.</li>
-                    <li>Managed network infrastructure, firewalls, and IT team supervision.</li>
-                    <li>Contributed to ISO process compliance and citizen charter creation.</li>
-                  </ul>
-                </div>
-              </div>
-        
-              <!-- Kimberly Clark -->
-              <div class="timeline-item mb-4 p-4 bg-light rounded shadow-sm">
-                <div class="d-flex justify-content-between align-items-center">
-                  <h4 class="fw-semibold mb-0">Intern Web Developer — Kimberly Clark</h4>
-                  <span class="text-muted small">Nov 2014 – Feb 2015</span>
-                </div>
-                <button class="btn btn-link text-decoration-none mt-2 p-0 text-primary" data-bs-toggle="collapse" data-bs-target="#kcDetails">
-                  View Details
-                </button>
-                <div id="kcDetails" class="collapse mt-2">
-                  <ul class="mb-0">
-                    <li>Developed Digital Services Dashboard integrating Google Maps & Charts.</li>
-                    <li>Built MVC-based web apps using C# and CSHTML for APAC operations.</li>
-                    <li>Implemented algorithms and scheduling techniques for process optimization.</li>
-                  </ul>
-                </div>
-              </div>
-        
-            </div>
-          </div>
-        </section>
-
-
-      <!-- Interactive Experience Timeline -->
       <section id="experience" class="my-5">
         <h2 class="section-title">Experience</h2>
-        <div class="timeline mt-4">
+        <p>Senior Software Engineer — Indeed (2021–Present)</p>
+      </section>
 
-          <!-- Event 1 -->
-          <div class="timeline-event mb-3">
-            <div class="card card-hover">
-              <div class="card-header bg-primary text-white" data-bs-toggle="collapse" href="#event1" style="cursor:pointer;">
-                Senior Software Engineer - Indeed (Mar 2021 - Present)
-              </div>
-              <div class="collapse" id="event1">
-                <div class="card-body">
-                  <p><strong>Tech:</strong> PHP / Java / Python / Microservices / DataDog</p>
-                  <ul>
-                    <li>Managed 70+ microservices and APIs for email notifications.</li>
-                    <li>Maintained ARIA-compliant websites.</li>
-                    <li>Led multi-region teams across APAC, EMEA, LATAM.</li>
-                    <li>Developed Salesforce integration APIs.</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Event 2 -->
-          <div class="timeline-event mb-3">
-            <div class="card card-hover">
-              <div class="card-header bg-primary text-white" data-bs-toggle="collapse" href="#event2" style="cursor:pointer;">
-                Sr. PHP Developer - Zymplify (Aug 2019 - Oct 2024)
-              </div>
-              <div class="collapse" id="event2">
-                <div class="card-body">
-                  <p><strong>Tech:</strong> PHP / MVC / Highcharts / Konva JS / SQL</p>
-                  <ul>
-                    <li>Developed client-specific functionalities and dashboards.</li>
-                    <li>Built automation builder solutions with Konva JS.</li>
-                    <li>Integrated multimedia content from Canva, Pexels, Pixabay, Unsplash.</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Event 3 -->
-          <div class="timeline-event mb-3">
-            <div class="card card-hover">
-              <div class="card-header bg-primary text-white" data-bs-toggle="collapse" href="#event3" style="cursor:pointer;">
-                Backend PHP Developer - Shore Business Solution (Jun 2018 - Jul 2019)
-              </div>
-              <div class="collapse" id="event3">
-                <div class="card-body">
-                  <p><strong>Tech:</strong> Laravel / CodeIgniter / AWS / Elasticsearch</p>
-                  <ul>
-                    <li>Maintained apps and developed Laravel APIs.</li>
-                    <li>Implemented mobile push notifications for Android & iOS.</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
+      <!-- AI Assistant Section -->
+      <section id="ai-section" class="my-5">
+        <h2 class="section-title">🤖 Ask AI Ian</h2>
+        <div class="chat-box" id="chatBox"></div>
+        <div class="d-flex mt-3">
+          <input type="text" id="userInput" class="form-control me-2" placeholder="Ask me anything about my experience, projects, or skills..." />
+          <button class="btn btn-primary" id="sendBtn"><i class="fas fa-paper-plane"></i></button>
         </div>
       </section>
 
-      <!-- Contact Section -->
       <section id="contact" class="my-5">
         <h2 class="section-title">Contact</h2>
         <p>Email: <a href="mailto:renebenjeiandiamante@gmail.com">renebenjeiandiamante@gmail.com</a></p>
-        <p>Phone: <a href="tel:+639560522007">+63 9952406425</a> / <a href="tel:+639619477036">+63 9619477036</a></p>
-        <p>LinkedIn: <a href="https://www.linkedin.com/in/the1geek1/" target="_blank">https://www.linkedin.com/in/the1geek1/</a></p>
-        <p>Address: 22B Camia St Tomasa Subd Brgy Ususan, Taguig City, Philippines</p>
       </section>
 
-      <!-- Footer -->
-      <footer class="text-center py-3 border-top mt-5">
-        &copy; 2025 Rene Benje Ian Diamante. All Rights Reserved.
-      </footer>
-
+      <footer class="text-center py-3 border-top mt-5">&copy; 2025 Rene Benje Ian Diamante — Level 10 Full Stack Engineer</footer>
     </main>
   </div>
 </div>
 
-<!-- Bootstrap JS -->
+<div class="toast" id="achievementToast"></div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
+<script src="config.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
