@@ -422,8 +422,6 @@ async function callGroq(prompt){
     appendMessage("Groq API key not provided. Replace the placeholder in the script to test.", "bot");
     return null;
   }
-
-  console.log("API KEY" + GROQ_API_KEY);
   const userPrompt = await getPrompt();
   const payload = { model: MODEL, messages: [{ role: "system", content: userPrompt }, { role: "user", content: prompt }], max_tokens: 700, temperature: 0.2 };
   try{
