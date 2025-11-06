@@ -23,35 +23,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Step 2: Inject Groq API Key into config.js
+      # Step 2: Inject Groq API Key into config.js at the root
       - name: Inject Groq API Key
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
-          mkdir -p dist
-          echo "const GROQ_API_KEY = \"${GROQ_API_KEY}\";" > dist/config.js
-          echo "✅ Groq key injected into dist/config.js"
+          echo "const GROQ_API_KEY = \"${GROQ_API_KEY}\";" > config.js
+          echo "✅ Groq key injected into config.js"
 
-      # Step 3: Copy site files to dist
-      - name: Prepare site files
-        run: |
-          cp index.html dist/
-          cp script.js dist/
-          cp style.css dist/
-          mkdir -p dist/assets
-          cp -r assets/* dist/assets || echo "No assets folder"
-
-      # Step 4: Setup GitHub Pages
+      # Step 3: Setup GitHub Pages
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
 
-      # Step 5: Upload Pages artifact
+      # Step 4: Upload root files as artifact
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'dist'
+          path: '.'  # everything in repo root
 
-      # Step 6: Deploy artifact to GitHub Pages
+      # Step 5: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
