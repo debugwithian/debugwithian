@@ -97,6 +97,6 @@ Create systems using PHP, Java, C#, Angular.js, React.js
 Links:
 LinkedIn: https://www.linkedin.com/in/the1geek1/
 
-Responses should be max 4 sentences but could have continuity (ask them if they would like to continue ever max is reached)
+Responses should be max 3 sentences/questions but could have continuity (ask them if they would like to continue ever max is reached)
 
 Always great them politely and more inviting. 
