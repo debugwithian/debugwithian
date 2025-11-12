@@ -1,0 +1,103 @@
+/* ====== Material You Inspired Portfolio ====== */
+:root {
+  --color-primary: #4caf50;
+  --color-surface: rgba(255, 255, 255, 0.12);
+  --color-text: #fff;
+  --blur-amount: 20px;
+  --border-radius: 20px;
+  --transition-speed: 0.3s;
+  font-family: "Roboto Flex", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(135deg, #101820, #283593);
+  color: var(--color-text);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ====== Glass Effect ====== */
+.glass {
+  background: var(--color-surface);
+  backdrop-filter: blur(var(--blur-amount));
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+
+/* ====== Layout ====== */
+header.app-bar,
+footer.app-footer {
+  text-align: center;
+  padding: 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem;
+  gap: 2rem;
+}
+
+.card {
+  width: 90%;
+  max-width: 800px;
+  padding: 2rem;
+  transition: transform var(--transition-speed) ease;
+}
+.card:hover {
+  transform: translateY(-5px);
+}
+
+/* ====== Project Grid ====== */
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.project {
+  padding: 2rem;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: background var(--transition-speed);
+}
+.project:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ====== Ripple Effect ====== */
+.ripple {
+  position: relative;
+  overflow: hidden;
+}
+.ripple::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  width: 10px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.4);
+  transform: scale(0);
+  opacity: 0;
+  transition: transform 0.6s, opacity 1s;
+}
+.ripple:active::after {
+  transform: scale(20);
+  opacity: 1;
+  transition: 0s;
+}
