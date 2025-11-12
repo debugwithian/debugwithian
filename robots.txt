@@ -1,1 +1,16 @@
+# robots.txt for https://debugwithian.com/
+# Created: 2025-11-12
+
+User-agent: *
+Allow: /
+Disallow: /tmp/
+Disallow: /private/
+Disallow: /cgi-bin/
+Crawl-delay: 5
+
+# Sitemap location
 Sitemap: https://debugwithian.com/sitemap.xml
+
+# Additional recommendations
+# - Keep URLs lowercase and consistent
+# - Use canonical tags on your pages to avoid duplicate indexing
