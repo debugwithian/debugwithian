@@ -8,45 +8,42 @@ on:
 
 jobs:
   ai_code_review:
-    name: 🤖 AI Code Review via Groq
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'  # Only run review on code push
+    - name: Run AI Code Review (Groq)
+  env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    run: |
+      echo "Running AI Code Review through Groq..."
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      # Fetch full history to access previous commits
+      git fetch --unshallow || true
+      git fetch origin prod_v2
 
-      - name: Run AI Code Review (Groq)
-        env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-        run: |
-          echo "Running AI Code Review through Groq..."
-          
-          # Get code differences in the last push (only in prod_v2)
-          git fetch origin prod_v2
-          git diff HEAD~1 HEAD > diff.txt
+      # Compare last two commits in prod_v2
+      git diff HEAD~1 HEAD | tail -n 2000 > diff.txt
 
-          # Send diff to Groq for AI-based review
-          REVIEW=$(curl -s https://api.groq.com/openai/v1/chat/completions \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $GROQ_API_KEY" \
-            -d '{
-              "model": "llama-3.1-70b-versatile",
-              "messages": [
-                {"role": "system", "content": "You are a senior software engineer performing a precise, concise code review. Flag bugs, vulnerabilities, or critical issues."},
-                {"role": "user", "content": "Review the following git diff for potential problems, bad practices, or security issues. Be concise:\n\n'"$(cat diff.txt | sed 's/"/\\"/g')"' "}
-              ]
-            }' | jq -r '.choices[0].message.content')
+      # Build payload safely to avoid oversized arguments
+      jq -n --arg diff "$(cat diff.txt)" '{
+        model: "llama-3.1-70b-versatile",
+        messages: [
+          {role: "system", "content": "You are a senior software engineer performing a concise code review. Flag bugs, vulnerabilities, or critical issues."},
+          {role: "user", "content": "Review the following git diff for potential problems, bad practices, or security issues:\n\n\($diff)"}
+        ]
+      }' > payload.json
 
-          echo "---- AI Code Review (Groq) ----"
-          echo "$REVIEW"
-          echo "$REVIEW" | tee ai_review_output.txt
+      # Send to Groq API
+      REVIEW=$(curl -s https://api.groq.com/openai/v1/chat/completions \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $GROQ_API_KEY" \
+        --data-binary @payload.json | jq -r '.choices[0].message.content')
 
-          # Optional: Fail deployment if AI detects critical issues
-          if echo "$REVIEW" | grep -qi "critical issue"; then
-            echo "❌ Critical issue detected. Stopping deployment."
-            exit 1
-          fi
+      echo "---- AI Code Review (Groq) ----"
+      echo "$REVIEW" | tee ai_review_output.txt
+
+      if echo "$REVIEW" | grep -qi "critical issue"; then
+        echo "❌ Critical issue detected. Stopping deployment."
+        exit 1
+      fi
+
 
   deploy:
     name: 🚀 Deploy to AWS (Manual Trigger)
