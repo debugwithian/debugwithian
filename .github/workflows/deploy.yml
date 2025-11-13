@@ -7,12 +7,12 @@ on:
   pull_request:
     branches:
       - prod_v2
+  workflow_dispatch: # optional manual trigger
 
 jobs:
   ai_code_review:
     name: 🤖 AI Code Review via Groq
     runs-on: ubuntu-latest
-    if: github.repository_owner == github.actor # Only repo owner can trigger
 
     steps:
       - name: Checkout code
@@ -24,10 +24,10 @@ jobs:
       - name: Validate secrets
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           : "${GROQ_API_KEY:?GROQ_API_KEY is not set}"
-          : "${GITHUB_TOKEN:?GITHUB_TOKEN is not set}"
+          : "${PAT_TOKEN:?PAT_TOKEN is not set}"
           echo "✅ Secrets are set."
 
       - name: Check for code changes & generate diff
@@ -65,7 +65,6 @@ jobs:
           if [ -z "$REVIEW" ]; then
             REVIEW="⚠️ No review returned from Groq."
           fi
-
           echo "$REVIEW" | tee ai_review_output.txt
 
       - name: Detect critical issues and write status
@@ -74,7 +73,7 @@ jobs:
             echo "⚠️ AI review output missing or empty."
             echo "AI Code Review: ⚠️ Skipped — invalid AI review output." > ai_review_status.txt
           else
-            # Use a specific pattern for critical issues to avoid false positives
+            # Use specific pattern for critical issues
             if grep -Eiq "^CRITICAL_ISSUE:" ai_review_output.txt; then
               echo "❌ Critical issue detected. Review failed." > ai_review_status.txt
               cat ai_review_output.txt >> ai_review_status.txt
@@ -84,32 +83,26 @@ jobs:
             fi
           fi
 
-      - name: Post AI Review as Comment
+      - name: Post AI Review as PR Comment
         if: always()  # Always post comment
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           if [ ! -s ai_review_status.txt ]; then
-            echo "⚠️ AI review output missing — skipping posting."
+            echo "⚠️ AI review status missing — skipping posting."
             exit 0
           fi
 
-          COMMENT_BODY=$(jq -Rn --arg text "$(cat ai_review_status.txt | sed 's/[<>]//g')" '$text')
+          COMMENT_BODY=$(jq -Rn --arg text "$(cat ai_review_status.txt | sed 's/["\\<>]/\\&/g')" '$text')
 
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # Comment is attached to the PR, which belongs to the source branch
-            PR_NUMBER=${{ github.event.pull_request.number }}
-            API_URL="${{ github.api_url }}/repos/${{ github.repository }}/issues/$PR_NUMBER/comments"
-          else
-            # fallback: comment on commit
-            API_URL="${{ github.api_url }}/repos/${{ github.repository }}/commits/${{ github.sha }}/comments"
-          fi
+          # Only post to PR (source branch comment)
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          API_URL="${{ github.api_url }}/repos/${{ github.repository }}/issues/$PR_NUMBER/comments"
 
           curl -sS -X POST -H "Authorization: token $PAT_TOKEN" \
                -H "Content-Type: application/json" \
                -d "{\"body\":$COMMENT_BODY}" \
                $API_URL
-
 
   deploy:
     name: 🚀 Deploy to AWS (Manual Trigger)
