@@ -160,3 +160,5 @@ jobs:
             pm2 restart my-app &&
             echo 'Deployment completed successfully'
           "
+
+          "
