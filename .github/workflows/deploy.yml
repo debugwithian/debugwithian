@@ -22,31 +22,49 @@ jobs:
         run: |
           echo "Running AI Code Review through Groq..."
 
-          # Fetch full history to access previous commits
+          # Ensure we have full git history for diffing
           git fetch --unshallow || true
           git fetch origin prod_v2
 
-          # Compare the commits in this push event
+          # Create diff between last and current commits in this push
+          echo "Generating git diff between commits..."
           git diff ${{ github.event.before }} ${{ github.sha }} | tail -n 2000 > diff.txt
 
-          # Build payload safely to avoid oversized arguments
+          if [ ! -s diff.txt ]; then
+            echo "⚠️ No code changes detected — skipping AI review."
+            exit 0
+          fi
+
+          # Build JSON payload safely
           jq -n --arg diff "$(cat diff.txt)" '{
             model: "llama-3.1-70b-versatile",
             messages: [
-              {role: "system", content: "You are a senior software engineer performing a concise code review. Flag bugs, vulnerabilities, or critical issues."},
-              {role: "user", content: "Review the following git diff for potential problems, bad practices, or security issues:\n\n\($diff)"}
+              {role: "system", content: "You are a senior software engineer performing a concise code review. Focus on bugs, vulnerabilities, bad practices, and critical issues only."},
+              {role: "user", content: "Review the following git diff for potential problems or security issues:\n\n\($diff)"}
             ]
           }' > payload.json
 
-          # Send to Groq API
-          REVIEW=$(curl -s https://api.groq.com/openai/v1/chat/completions \
+          # Send request to Groq API
+          RAW_RESPONSE=$(curl -s https://api.groq.com/openai/v1/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $GROQ_API_KEY" \
-            --data-binary @payload.json | jq -r '.choices[0].message.content')
+            --data-binary @payload.json)
+
+          echo "---- RAW Groq Response ----"
+          echo "$RAW_RESPONSE"
+
+          # Safely extract the review text
+          REVIEW=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content // empty')
 
           echo "---- AI Code Review (Groq) ----"
+          if [ -z "$REVIEW" ]; then
+            echo "⚠️ No valid review returned from Groq."
+            exit 0
+          fi
+
           echo "$REVIEW" | tee ai_review_output.txt
 
+          # Optional: stop if AI flags a critical issue
           if echo "$REVIEW" | grep -qi "critical issue"; then
             echo "❌ Critical issue detected. Stopping deployment."
             exit 1
