@@ -51,12 +51,14 @@ jobs:
           set -euo pipefail
           if [ -s diff.txt ]; then
             DIFF=$(<diff.txt)
+
+            # Build JSON payload safely
             PAYLOAD=$(jq -n --arg diff "$DIFF" '{
               model: "llama-3.1-8b-instant",
               messages: [
                 {
                   role: "system",
-                  content: "You are a senior software engineer performing a full, comprehensive code review. Check for syntax errors, logic issues, bugs, code style, performance problems, and potential vulnerabilities. Don't say this in the comment — format it correctly for GitHub comments. Provide only summary and suggested improvements."
+                  content: "You are a senior software engineer performing a full, comprehensive code review. Format output for GitHub comments: provide only summary and suggested improvements."
                 },
                 {
                   role: "user",
@@ -71,9 +73,7 @@ jobs:
               --data-raw "$PAYLOAD") || exit 1
 
             REVIEW=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content // empty')
-            if [ -z "$REVIEW" ]; then
-              REVIEW="✅ No Issue on code"
-            fi
+            [ -z "$REVIEW" ] && REVIEW="✅ No Issue on code"
             echo "$REVIEW" | tee ai_review_output.txt
           fi
 
