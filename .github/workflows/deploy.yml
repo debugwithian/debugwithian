@@ -4,52 +4,59 @@ on:
   push:
     branches:
       - prod_v2
-  workflow_dispatch:  # Enables manual deployment trigger
+  workflow_dispatch: # Enables manual deployment trigger
 
 jobs:
   ai_code_review:
-    - name: Run AI Code Review (Groq)
-  env:
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-    run: |
-      echo "Running AI Code Review through Groq..."
+    name: 🤖 AI Code Review via Groq
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' # Only run review automatically on push
 
-      # Fetch full history to access previous commits
-      git fetch --unshallow || true
-      git fetch origin prod_v2
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      # Compare last two commits in prod_v2
-      git diff HEAD~1 HEAD | tail -n 2000 > diff.txt
+      - name: Run AI Code Review (Groq)
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          echo "Running AI Code Review through Groq..."
 
-      # Build payload safely to avoid oversized arguments
-      jq -n --arg diff "$(cat diff.txt)" '{
-        model: "llama-3.1-70b-versatile",
-        messages: [
-          {role: "system", "content": "You are a senior software engineer performing a concise code review. Flag bugs, vulnerabilities, or critical issues."},
-          {role: "user", "content": "Review the following git diff for potential problems, bad practices, or security issues:\n\n\($diff)"}
-        ]
-      }' > payload.json
+          # Fetch full history to access previous commits
+          git fetch --unshallow || true
+          git fetch origin prod_v2
 
-      # Send to Groq API
-      REVIEW=$(curl -s https://api.groq.com/openai/v1/chat/completions \
-        -H "Content-Type: application/json" \
-        -H "Authorization: Bearer $GROQ_API_KEY" \
-        --data-binary @payload.json | jq -r '.choices[0].message.content')
+          # Compare the commits in this push event
+          git diff ${{ github.event.before }} ${{ github.sha }} | tail -n 2000 > diff.txt
 
-      echo "---- AI Code Review (Groq) ----"
-      echo "$REVIEW" | tee ai_review_output.txt
+          # Build payload safely to avoid oversized arguments
+          jq -n --arg diff "$(cat diff.txt)" '{
+            model: "llama-3.1-70b-versatile",
+            messages: [
+              {role: "system", content: "You are a senior software engineer performing a concise code review. Flag bugs, vulnerabilities, or critical issues."},
+              {role: "user", content: "Review the following git diff for potential problems, bad practices, or security issues:\n\n\($diff)"}
+            ]
+          }' > payload.json
 
-      if echo "$REVIEW" | grep -qi "critical issue"; then
-        echo "❌ Critical issue detected. Stopping deployment."
-        exit 1
-      fi
+          # Send to Groq API
+          REVIEW=$(curl -s https://api.groq.com/openai/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $GROQ_API_KEY" \
+            --data-binary @payload.json | jq -r '.choices[0].message.content')
 
+          echo "---- AI Code Review (Groq) ----"
+          echo "$REVIEW" | tee ai_review_output.txt
+
+          if echo "$REVIEW" | grep -qi "critical issue"; then
+            echo "❌ Critical issue detected. Stopping deployment."
+            exit 1
+          fi
 
   deploy:
     name: 🚀 Deploy to AWS (Manual Trigger)
     runs-on: ubuntu-latest
     needs: ai_code_review
-    if: github.event_name == 'workflow_dispatch'  # Run only when triggered manually
+    if: github.event_name == 'workflow_dispatch' # Run only when triggered manually
 
     steps:
       - name: Checkout code
