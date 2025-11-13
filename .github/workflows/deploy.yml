@@ -30,8 +30,9 @@ jobs:
       - name: Generate Git Diff
         run: |
           git fetch origin prod_v2
-
-          git checkout ${{ github.event.pull_request.head.ref }}
+          # Fetch PR branch safely (works for forks)
+          git fetch origin ${{ github.event.pull_request.head.ref }}:pr_branch
+          git checkout pr_branch
 
           BASE=$(git merge-base HEAD origin/prod_v2)
 
@@ -99,7 +100,7 @@ jobs:
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          # Default message if missing
+          # Ensure default message if file missing
           if [ ! -s ai_review_status.txt ]; then
             echo "✅ No Issue on code" > ai_review_status.txt
           fi
