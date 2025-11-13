@@ -37,7 +37,7 @@ jobs:
 
           # Build JSON payload safely
           jq -n --arg diff "$(cat diff.txt)" '{
-            model: "llama-3.1-70b-versatile",
+            model: "llama-3.1-8b-instant",
             messages: [
               {role: "system", content: "You are a senior software engineer performing a concise code review. Focus on bugs, vulnerabilities, bad practices, and critical issues only."},
               {role: "user", content: "Review the following git diff for potential problems or security issues:\n\n\($diff)"}
