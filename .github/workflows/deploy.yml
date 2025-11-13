@@ -20,9 +20,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Validate secrets
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           : "${GROQ_API_KEY:?GROQ_API_KEY is not set}"
           : "${GITHUB_TOKEN:?GITHUB_TOKEN is not set}"
+          echo "✅ Secrets validated."
 
       - name: Run AI Code Review (Groq)
         env:
