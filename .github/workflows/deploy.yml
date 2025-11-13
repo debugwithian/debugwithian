@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - prod_v2
-  pull_request:
+  pull_request_target:
     branches:
       - prod_v2
   workflow_dispatch: # Manual trigger
@@ -79,7 +79,7 @@ jobs:
         run: |
           COMMENT_BODY=$(jq -Rn --arg text "$(cat ai_review_output.txt)" '$text')
 
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
             PR_NUMBER=${{ github.event.pull_request.number }}
             API_URL="${{ github.api_url }}/repos/${{ github.repository }}/issues/$PR_NUMBER/comments"
           else
