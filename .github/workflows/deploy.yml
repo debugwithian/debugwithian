@@ -7,13 +7,12 @@ on:
   pull_request_target:
     branches:
       - prod_v2
-  workflow_dispatch: # Manual trigger
 
 jobs:
   ai_code_review:
     name: 🤖 AI Code Review via Groq
     runs-on: ubuntu-latest
-    if: github.repository_owner == github.actor # Restrict to repo owner
+    if: github.repository_owner == github.actor # Only repo owner can trigger
 
     steps:
       - name: Checkout code
@@ -69,27 +68,33 @@ jobs:
 
           echo "$REVIEW" | tee ai_review_output.txt
 
-      - name: Detect critical issues
+      - name: Detect critical issues and write status
         run: |
-          if [ -s ai_review_output.txt ]; then
-            if grep -iq "critical issue" ai_review_output.txt; then
-              echo "❌ Critical issue detected. Review failed."
-              echo "AI Code Review: ❌ Failed — critical issues detected. See details below:" > ai_review_status.txt
+          if [ ! -s ai_review_output.txt ]; then
+            echo "⚠️ AI review output missing or empty."
+            echo "AI Code Review: ⚠️ Skipped — invalid AI review output." > ai_review_status.txt
+          else
+            # Use a specific pattern for critical issues to avoid false positives
+            if grep -Eiq "^CRITICAL_ISSUE:" ai_review_output.txt; then
+              echo "❌ Critical issue detected. Review failed." > ai_review_status.txt
               cat ai_review_output.txt >> ai_review_status.txt
               exit 1
             else
-              echo "AI Code Review: ✅ Passed — no critical issues found." > ai_review_status.txt
+              echo "✅ AI review passed — no critical issues detected." > ai_review_status.txt
             fi
-          else
-            echo "⚠️ Warning: ai_review_output.txt is empty or invalid."
-            echo "AI Code Review: ⚠️ Skipped — invalid AI review output." > ai_review_status.txt
           fi
 
       - name: Post AI Review as Comment
-        if: always()  # Always post comment
+        if: always() # Always post comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if [ ! -s ai_review_status.txt ]; then
+            echo "⚠️ Comment file missing — skipping posting."
+            exit 0
+          fi
+
+          # Sanitize comment content
           COMMENT_BODY=$(jq -Rn --arg text "$(cat ai_review_status.txt | sed 's/[<>]//g')" '$text')
 
           if [ "${{ github.event_name }}" = "pull_request_target" ]; then
@@ -99,16 +104,10 @@ jobs:
             API_URL="${{ github.api_url }}/repos/${{ github.repository }}/commits/${{ github.sha }}/comments"
           fi
 
-          HTTP_RESPONSE=$(curl -sS -w "%{http_code}" -o response.json -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"body\":$COMMENT_BODY}" \
-            $API_URL)
-
-          if [ "$HTTP_RESPONSE" -ne 201 ]; then
-            echo "⚠️ Failed to post comment. HTTP code: $HTTP_RESPONSE"
-            cat response.json
-          fi
+          curl -sS -X POST -H "Authorization: token $GITHUB_TOKEN" \
+               -H "Content-Type: application/json" \
+               -d "{\"body\":$COMMENT_BODY}" \
+               $API_URL
 
   deploy:
     name: 🚀 Deploy to AWS (Manual Trigger)
