@@ -160,5 +160,3 @@ jobs:
             pm2 restart all &&
             echo 'Deployment completed successfully'
           "
-
-          "
