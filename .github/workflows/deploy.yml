@@ -84,9 +84,7 @@ jobs:
             REVIEW_RAW=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content // empty')
 
             # Normalize JSON: remove enclosing quotes if returned as string
-            if [[ "$REVIEW_RAW" =~ ^\".*\"$ ]]; then
-              REVIEW_RAW=$(echo "$REVIEW_RAW" | sed 's/^"//;s/"$//' | sed 's/\\"/"/g')
-            fi
+            REVIEW_RAW=$(echo "$REVIEW_RAW" | tr -d '\n' | sed 's/\\n/ /g' | sed 's/\\"/"/g' | sed 's/^"//;s/"$//')
 
             # Fallback if empty
             if [ -z "$REVIEW_RAW" ]; then
@@ -103,24 +101,33 @@ jobs:
           STATUS_FILE="ai_review_status.txt"
           touch "$REVIEW_FILE"
 
-          # Extract status and body safely
-          STATUS=$(jq -r '.status // empty' "$REVIEW_FILE" 2>/dev/null || echo "")
-          BODY=$(jq -r '.body // empty' "$REVIEW_FILE" 2>/dev/null || echo "")
+          # Read AI output and clean formatting
+          REVIEW_RAW=$(tr -d '\n' < "$REVIEW_FILE" | sed 's/\\n/ /g' | sed 's/\\"/"/g' | sed 's/^"//;s/"$//')
 
-          # Format output with if/elif/else
-          if [[ "$STATUS" == "CRITICAL_ISSUE" ]]; then
-            echo "Status: CRITICAL_ISSUE" > "$STATUS_FILE"
-          elif [[ "$STATUS" == "IMPROVEMENTS" ]]; then
-            echo "Status: IMPROVEMENTS" > "$STATUS_FILE"
-          elif [[ "$STATUS" == "PASSED" ]]; then
-            echo "Status: PASSED" > "$STATUS_FILE"
-          else
-            echo "Status: INVALID" > "$STATUS_FILE"
+          # Parse status and body
+          STATUS=$(echo "$REVIEW_RAW" | jq -r '.status // empty' 2>/dev/null || echo "")
+          BODY=$(echo "$REVIEW_RAW" | jq -r '.body // empty' 2>/dev/null || echo "")
+
+          # Fallback if parsing failed
+          if [[ -z "$STATUS" ]]; then
+            STATUS="PASSED"
+            BODY="No issues detected or could not parse AI output."
           fi
 
-          # Append body under status
-          echo "" >> "$STATUS_FILE"
-          echo "$BODY" >> "$STATUS_FILE"
+          # Normalize status
+          case "$STATUS" in
+            CRITICAL_ISSUE) NORMALIZED="CRITICAL" ;;
+            IMPROVEMENTS)   NORMALIZED="IMPROVEMENTS" ;;
+            PASSED)         NORMALIZED="PASSED" ;;
+            *)              NORMALIZED="PASSED" ;;
+          esac
+
+          # Write final status file
+          {
+            echo "Status: $NORMALIZED"
+            echo ""
+            echo "$BODY"
+          } > "$STATUS_FILE"
 
       - name: Post AI Review as PR Comment
         if: github.event_name == 'pull_request'
@@ -129,6 +136,8 @@ jobs:
         run: |
           set -euo pipefail
           COMMENT=$(cat ai_review_status.txt)
+
+          # Format multi-line comment safely for GitHub
           JSON_BODY=$(jq -Rn --arg text "$COMMENT" '{"body": $text}')
 
           PR_NUMBER=${{ github.event.pull_request.number }}
