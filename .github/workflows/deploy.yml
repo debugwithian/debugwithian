@@ -37,7 +37,7 @@ jobs:
           : "${PAT_TOKEN:?PAT_TOKEN is not set}"
           echo "✅ Secrets validated."
 
-      - name: Generate Git Diff for PR branch
+      - name: Generate full Git Diff for PR branch
         run: |
           set -euo pipefail
           git fetch origin prod_v2
@@ -46,13 +46,14 @@ jobs:
           BASE=$(git merge-base HEAD origin/prod_v2)
 
           if ! git diff $BASE HEAD --quiet; then
+            # Save full diff without truncation
             git diff $BASE HEAD > diff.txt
           else
             echo '{"status":"PASSED","body":"No issues detected."}' > ai_review_output.txt
           fi
 
       - name: Run AI Code Review (Groq)
-        if: steps.generate_diff.outputs.diff_exists != 'false'
+        if: files.exists('diff.txt')
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
@@ -85,7 +86,9 @@ jobs:
             echo "$REVIEW_RAW" | tee ai_review_output.txt
           fi
 
-      - name: Analyze AI Review
+      - name: Analyze AI Review & Post PR Comment
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           set -euo pipefail
           REVIEW_FILE="ai_review_output.txt"
@@ -108,26 +111,16 @@ jobs:
             *)              NORMALIZED="PASSED" ;;
           esac
 
-          # Fail the workflow if CRITICAL detected (prevents merge)
-          if [[ "$NORMALIZED" == "CRITICAL" ]]; then
-            echo "CRITICAL issues detected. Blocking merge."
-            exit 1
-          fi
-
+          # Write status file
           {
             echo "Status: $NORMALIZED"
             echo ""
             echo "$BODY"
           } > "$STATUS_FILE"
 
-      - name: Post AI Review as PR Comment
-        env:
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: |
-          set -euo pipefail
-          COMMENT=$(cat ai_review_status.txt)
+          # Post PR comment first
+          COMMENT=$(cat "$STATUS_FILE")
           JSON_BODY=$(jq -Rn --arg text "$COMMENT" '{"body": $text}')
-
           PR_NUMBER=${{ github.event.pull_request.number }}
           REPO=${{ github.repository }}
           API_URL="https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments"
@@ -137,6 +130,12 @@ jobs:
                -H "Content-Type: application/json" \
                -d "$JSON_BODY" \
                "$API_URL"
+
+          # Fail workflow to block merge if critical
+          if [[ "$NORMALIZED" == "CRITICAL" ]]; then
+            echo "CRITICAL issues detected. Blocking merge."
+            exit 1
+          fi
 
   deploy:
     name: 🚀 Deploy to AWS
