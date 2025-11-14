@@ -38,6 +38,7 @@ jobs:
           echo "✅ Secrets validated."
 
       - name: Generate Git Diff for PR branch
+        id: generate_diff
         run: |
           set -euo pipefail
           git fetch origin prod_v2
@@ -47,45 +48,46 @@ jobs:
 
           if ! git diff $BASE HEAD --quiet; then
             git diff $BASE HEAD > diff.txt
+            echo "diff_exists=true" >> $GITHUB_OUTPUT
           else
             echo '{"status":"PASSED","body":"No issues detected."}' > ai_review_output.txt
+            echo "diff_exists=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Run AI Code Review (Groq)
-        if: steps.generate_diff.outputs.diff_exists != 'false'
+        if: steps.generate_diff.outputs.diff_exists == 'true'
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           set -euo pipefail
-          if [ -s diff.txt ]; then
-            DIFF=$(<diff.txt)
-            PAYLOAD=$(jq -n --arg diff "$DIFF" '{
-              model: "llama-3.1-8b-instant",
-              messages: [
-                {
-                  role: "system",
-                  content: "You are a senior software engineer performing a strict code review. Your ONLY output must be a valid JSON object in the exact format: {\"status\": \"CRITICAL_ISSUE|IMPROVEMENTS|PASSED\", \"body\": \"Comment here\"}. Include the code blocks affected by CRITICAL or IMPROVEMENTS. If syntax errors exist, status must be CRITICAL_ISSUE."
-                },
-                {
-                  role: "user",
-                  content: ("Review the following git diff for potential problems (logic, syntax, style, performance, security).\n\n" + $diff)
-                }
-              ]
-            }')
-            RAW_RESPONSE=$(curl -sS --fail https://api.groq.com/openai/v1/chat/completions \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer $GROQ_API_KEY" \
-              --data-raw "$PAYLOAD") || exit 1
+          DIFF=$(<diff.txt)
+          PAYLOAD=$(jq -n --arg diff "$DIFF" '{
+            model: "llama-3.1-8b-instant",
+            messages: [
+              {
+                role: "system",
+                content: "You are a senior software engineer performing a strict code review. Your ONLY output must be a valid JSON object in the exact format: {\"status\": \"CRITICAL_ISSUE|IMPROVEMENTS|PASSED\", \"body\": \"Comment here\"}. Include the code blocks affected by CRITICAL or IMPROVEMENTS. If syntax errors exist, status must be CRITICAL_ISSUE."
+              },
+              {
+                role: "user",
+                content: ("Review the following git diff for potential problems (logic, syntax, style, performance, security).\n\n" + $diff)
+              }
+            ]
+          }')
 
-            REVIEW_RAW=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content // empty')
-            REVIEW_RAW=$(echo "$REVIEW_RAW" | tr -d '\n' | sed 's/\\n/ /g' | sed 's/\\"/"/g' | sed 's/^"//;s/"$//')
-            if [ -z "$REVIEW_RAW" ]; then
-              REVIEW_RAW='{"status":"PASSED","body":"No issues detected."}'
-            fi
-            echo "$REVIEW_RAW" | tee ai_review_output.txt
+          RAW_RESPONSE=$(curl -sS --fail https://api.groq.com/openai/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $GROQ_API_KEY" \
+            --data-raw "$PAYLOAD") || exit 1
+
+          REVIEW_RAW=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content // empty')
+          REVIEW_RAW=$(echo "$REVIEW_RAW" | tr -d '\n' | sed 's/\\n/ /g' | sed 's/\\"/"/g' | sed 's/^"//;s/"$//')
+          if [ -z "$REVIEW_RAW" ]; then
+            REVIEW_RAW='{"status":"PASSED","body":"No issues detected."}'
           fi
+          echo "$REVIEW_RAW" | tee ai_review_output.txt
 
-            - name: Analyze AI Review & Post PR Comment
+      - name: Analyze AI Review & Post PR Comment
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
@@ -94,7 +96,6 @@ jobs:
           STATUS_FILE="ai_review_status.txt"
           touch "$REVIEW_FILE"
 
-          # Clean AI output
           REVIEW_RAW=$(tr -d '\n' < "$REVIEW_FILE" | sed 's/\\n/ /g' | sed 's/\\"/"/g' | sed 's/^"//;s/"$//')
           STATUS=$(echo "$REVIEW_RAW" | jq -r '.status // empty' 2>/dev/null || echo "")
           BODY=$(echo "$REVIEW_RAW" | jq -r '.body // empty' 2>/dev/null || echo "")
@@ -104,7 +105,6 @@ jobs:
             BODY="No issues detected or could not parse AI output."
           fi
 
-          # Normalize status
           case "$STATUS" in
             CRITICAL_ISSUE) NORMALIZED="CRITICAL" ;;
             IMPROVEMENTS)   NORMALIZED="IMPROVEMENTS" ;;
@@ -112,14 +112,12 @@ jobs:
             *)              NORMALIZED="PASSED" ;;
           esac
 
-          # Write status file
           {
             echo "Status: $NORMALIZED"
             echo ""
             echo "$BODY"
           } > "$STATUS_FILE"
 
-          # --- POST COMMENT FIRST ---
           COMMENT=$(cat "$STATUS_FILE")
           JSON_BODY=$(jq -Rn --arg text "$COMMENT" '{"body": $text}')
           PR_NUMBER=${{ github.event.pull_request.number }}
@@ -132,7 +130,6 @@ jobs:
                -d "$JSON_BODY" \
                "$API_URL"
 
-          # --- THEN FAIL IF CRITICAL ---
           if [[ "$NORMALIZED" == "CRITICAL" ]]; then
             echo "CRITICAL issues detected. Blocking merge."
             exit 1
