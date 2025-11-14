@@ -102,21 +102,20 @@ jobs:
             echo '{"status":"PASSED","body":"✅ No issues detected."}' > "$REVIEW_FILE"
           fi
 
-          # Extract status safely
-          STATUS=$(grep -oP '"status"\s*:\s*"\K[^"]+' "$REVIEW_FILE" || echo "PASSED")
-
-          # Extract body safely (everything after "status")
+          # Extract status (single priority)
+          RAW_STATUS=$(grep -oP '"status"\s*:\s*"\K[^"]+' "$REVIEW_FILE" || echo "PASSED")
           BODY=$(sed '1s/^{.*"status": *"[^"]*", *"body": *"//; $s/"\s*}$//' "$REVIEW_FILE")
 
-          # Normalize
-          case "$STATUS" in
-            CRITICAL_ISSUE) NORMALIZED="CRITICAL" ;;
-            IMPROVEMENTS)   NORMALIZED="IMPROVEMENTS" ;;
-            PASSED)         NORMALIZED="PASSED" ;;
-            *)              NORMALIZED="PASSED" ;;
-          esac
+          NORMALIZED="PASSED"
+          for s in ${RAW_STATUS//|/ }; do
+            case "$s" in
+              CRITICAL_ISSUE) NORMALIZED="CRITICAL"; break ;;
+              IMPROVEMENTS)   [ "$NORMALIZED" != "CRITICAL" ] && NORMALIZED="IMPROVEMENTS" ;;
+              PASSED)         [ "$NORMALIZED" != "CRITICAL" ] && [ "$NORMALIZED" != "IMPROVEMENTS" ] && NORMALIZED="PASSED" ;;
+            esac
+          done
 
-          # Write comment
+          # Save PR comment
           {
             echo "Status: $NORMALIZED"
             echo ""
