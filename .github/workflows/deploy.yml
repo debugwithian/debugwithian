@@ -69,16 +69,14 @@ jobs:
             messages: [
               {
                 role: "system",
-                content: "You are a senior software engineer performing a strict code review. Return ONLY a single valid JSON object: {\"status\": \"CRITICAL_ISSUE|IMPROVEMENTS|PASSED\", \"body\": \"Markdown PR comment with code blocks\"}. Escape quotes properly, use actual newlines, and format all code snippets with triple backticks and language hints (e.g., ```html, ```js). Do not return text outside the JSON."
+                content: "You are a senior software engineer performing a strict code review. Return ONLY a single valid JSON object: {\"status\": \"CRITICAL_ISSUE|IMPROVEMENTS|PASSED\", \"body\": \"Markdown PR comment\"}. Format all code snippets with triple backticks and language hints (```html, ```js), use actual newlines, escape quotes properly, and include headings, bullet points, and preformatted code blocks. Do not return text outside JSON."
               },
               {
                 role: "user",
-                content: ("Review the following git diff for potential problems (logic, syntax, style, performance, security). Return only one of: CRITICAL if critical issues exist, IMPROVEMENTS if suggestions, or PASSED if no issues. Format your response in Markdown with headings, bullet points, and preformatted code blocks where applicable, using actual newlines, not \\n, and proper quotes.\n\n" + $diff)
+                content: ("Review the following git diff for potential problems (logic, syntax, style, performance, security). Return only one of: CRITICAL if critical issues exist, IMPROVEMENTS if suggestions, or PASSED if no issues. Format your response in GitHub Markdown with headings, bullets, and preformatted code blocks.\n\n" + $diff)
               }
             ]
           }')
-
-
 
           RAW_RESPONSE=$(curl -sS --fail https://api.groq.com/openai/v1/chat/completions \
             -H "Content-Type: application/json" \
@@ -104,18 +102,17 @@ jobs:
             echo '{"status":"PASSED","body":"✅ No issues detected."}' > "$REVIEW_FILE"
           fi
 
-          # Ensure JSON format (wrap raw Markdown if needed)
-          # This handles cases where AI returns invalid JSON
+          # Ensure valid JSON (wrap raw Markdown if AI returned invalid JSON)
           if ! jq empty "$REVIEW_FILE" >/dev/null 2>&1; then
             CONTENT=$(<"$REVIEW_FILE")
-            # Escape quotes and wrap in JSON
-            echo "{\"status\":\"CRITICAL_ISSUE\",\"body\":\"$(echo "$CONTENT" | sed 's/"/\\"/g')\"}" > "$REVIEW_FILE"
+            # Safely encode all newlines, quotes, and control characters
+            echo "{\"status\":\"CRITICAL_ISSUE\",\"body\":$(jq -Rs --arg text "$CONTENT" '$text')}" > "$REVIEW_FILE"
           fi
 
           # Extract status safely
           RAW_STATUS=$(jq -r '.status // "PASSED"' "$REVIEW_FILE")
 
-          # Extract body safely, preserving newlines and Markdown
+          # Extract body safely, preserving Markdown
           BODY=$(jq -r '.body // ""' "$REVIEW_FILE")
 
           NORMALIZED="PASSED"
@@ -135,7 +132,6 @@ jobs:
           } > ai_review_status.txt
 
           echo "review_status=$NORMALIZED" >> $GITHUB_OUTPUT
-
 
       - name: Post AI Review as PR Comment
         env:
