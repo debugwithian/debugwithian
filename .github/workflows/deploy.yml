@@ -97,15 +97,18 @@ jobs:
           set -euo pipefail
           REVIEW_FILE="ai_review_output.txt"
 
-          # Ensure fallback if empty
+          # Fallback if empty
           if [ ! -s "$REVIEW_FILE" ]; then
             echo '{"status":"PASSED","body":"✅ No issues detected."}' > "$REVIEW_FILE"
           fi
 
-          # Safely parse multi-line JSON with Markdown/code blocks
-          STATUS=$(jq -Rs 'fromjson? // {"status":"PASSED","body":"✅ No issues detected."} | .status' "$REVIEW_FILE")
-          BODY=$(jq -Rs 'fromjson? // {"status":"PASSED","body":"✅ No issues detected."} | .body' "$REVIEW_FILE")
+          # Extract status safely
+          STATUS=$(grep -oP '"status"\s*:\s*"\K[^"]+' "$REVIEW_FILE" || echo "PASSED")
 
+          # Extract body safely (everything after "status")
+          BODY=$(sed '1s/^{.*"status": *"[^"]*", *"body": *"//; $s/"\s*}$//' "$REVIEW_FILE")
+
+          # Normalize
           case "$STATUS" in
             CRITICAL_ISSUE) NORMALIZED="CRITICAL" ;;
             IMPROVEMENTS)   NORMALIZED="IMPROVEMENTS" ;;
@@ -113,10 +116,11 @@ jobs:
             *)              NORMALIZED="PASSED" ;;
           esac
 
+          # Write comment
           {
             echo "Status: $NORMALIZED"
             echo ""
-            echo -e "$BODY"
+            echo "$BODY"
           } > ai_review_status.txt
 
           echo "review_status=$NORMALIZED" >> $GITHUB_OUTPUT
