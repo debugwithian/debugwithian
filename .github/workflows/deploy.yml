@@ -109,7 +109,7 @@ jobs:
           BODY=$(jq -r '.body // empty' "$REVIEW_FILE" 2>/dev/null || echo "")
 
           if [[ "$STATUS" == "CRITICAL" ]]; then
-            echo "Status: ❌ CRITICAL " > "$STATUS_FILE"
+            echo "Status: ❌ CRITICAL" > "$STATUS_FILE"
             REVIEW_RESULT="CRITICAL"
           elif [[ "$STATUS" == "IMPROVEMENTS" ]]; then
             echo "Status: ⚠️ IMPROVEMENTS" > "$STATUS_FILE"
