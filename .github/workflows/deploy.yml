@@ -37,7 +37,7 @@ jobs:
           : "${PAT_TOKEN:?PAT_TOKEN is not set}"
           echo "✅ Secrets validated."
 
-      - name: Generate full Git Diff for PR branch
+      - name: Generate Git Diff for PR branch
         run: |
           set -euo pipefail
           git fetch origin prod_v2
@@ -46,14 +46,13 @@ jobs:
           BASE=$(git merge-base HEAD origin/prod_v2)
 
           if ! git diff $BASE HEAD --quiet; then
-            # Save full diff without truncation
             git diff $BASE HEAD > diff.txt
           else
             echo '{"status":"PASSED","body":"No issues detected."}' > ai_review_output.txt
           fi
 
       - name: Run AI Code Review (Groq)
-        if: files.exists('diff.txt')
+        if: steps.generate_diff.outputs.diff_exists != 'false'
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
@@ -86,7 +85,7 @@ jobs:
             echo "$REVIEW_RAW" | tee ai_review_output.txt
           fi
 
-      - name: Analyze AI Review & Post PR Comment
+            - name: Analyze AI Review & Post PR Comment
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
@@ -95,6 +94,7 @@ jobs:
           STATUS_FILE="ai_review_status.txt"
           touch "$REVIEW_FILE"
 
+          # Clean AI output
           REVIEW_RAW=$(tr -d '\n' < "$REVIEW_FILE" | sed 's/\\n/ /g' | sed 's/\\"/"/g' | sed 's/^"//;s/"$//')
           STATUS=$(echo "$REVIEW_RAW" | jq -r '.status // empty' 2>/dev/null || echo "")
           BODY=$(echo "$REVIEW_RAW" | jq -r '.body // empty' 2>/dev/null || echo "")
@@ -104,6 +104,7 @@ jobs:
             BODY="No issues detected or could not parse AI output."
           fi
 
+          # Normalize status
           case "$STATUS" in
             CRITICAL_ISSUE) NORMALIZED="CRITICAL" ;;
             IMPROVEMENTS)   NORMALIZED="IMPROVEMENTS" ;;
@@ -118,7 +119,7 @@ jobs:
             echo "$BODY"
           } > "$STATUS_FILE"
 
-          # Post PR comment first
+          # --- POST COMMENT FIRST ---
           COMMENT=$(cat "$STATUS_FILE")
           JSON_BODY=$(jq -Rn --arg text "$COMMENT" '{"body": $text}')
           PR_NUMBER=${{ github.event.pull_request.number }}
@@ -131,7 +132,7 @@ jobs:
                -d "$JSON_BODY" \
                "$API_URL"
 
-          # Fail workflow to block merge if critical
+          # --- THEN FAIL IF CRITICAL ---
           if [[ "$NORMALIZED" == "CRITICAL" ]]; then
             echo "CRITICAL issues detected. Blocking merge."
             exit 1
