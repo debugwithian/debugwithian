@@ -17,6 +17,7 @@ jobs:
   ai_code_review:
     name: 🤖 AI Code Review via Groq
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == false
 
     steps:
       - name: Checkout code
@@ -37,7 +38,6 @@ jobs:
           echo "✅ Secrets validated."
 
       - name: Generate Git Diff for PR branch
-        if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin prod_v2
@@ -46,51 +46,42 @@ jobs:
           BASE=$(git merge-base HEAD origin/prod_v2)
 
           if ! git diff $BASE HEAD --quiet; then
-            git diff $BASE HEAD | head -n 2000 | head -c 50000 > diff.txt
+            git diff $BASE HEAD > diff.txt
           else
             echo '{"status":"PASSED","body":"No issues detected."}' > ai_review_output.txt
           fi
 
       - name: Run AI Code Review (Groq)
-        if: github.event_name == 'pull_request'
+        if: steps.generate_diff.outputs.diff_exists != 'false'
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           set -euo pipefail
-
           if [ -s diff.txt ]; then
             DIFF=$(<diff.txt)
-
             PAYLOAD=$(jq -n --arg diff "$DIFF" '{
               model: "llama-3.1-8b-instant",
               messages: [
                 {
                   role: "system",
-                  content: "You are a senior software engineer performing a strict code review. Your ONLY output must be a valid JSON object in the exact format: {\"status\": \"CRITICAL_ISSUE|IMPROVEMENTS|PASSED\", \"body\": \"Comment here\"}. Do NOT output anything else. If any syntax error exists, status must be CRITICAL_ISSUE."
+                  content: "You are a senior software engineer performing a strict code review. Your ONLY output must be a valid JSON object in the exact format: {\"status\": \"CRITICAL_ISSUE|IMPROVEMENTS|PASSED\", \"body\": \"Comment here\"}. Include the code blocks affected by CRITICAL or IMPROVEMENTS. If syntax errors exist, status must be CRITICAL_ISSUE."
                 },
                 {
                   role: "user",
-                  content: ("Review the following git diff for potential problems (logic, syntax, style, performance, security). Syntax errors including on HTML like closing tags not properly closed etc. must always produce status CRITICAL_ISSUE.\n\n" + $diff)
+                  content: ("Review the following git diff for potential problems (logic, syntax, style, performance, security).\n\n" + $diff)
                 }
               ]
             }')
-
             RAW_RESPONSE=$(curl -sS --fail https://api.groq.com/openai/v1/chat/completions \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $GROQ_API_KEY" \
               --data-raw "$PAYLOAD") || exit 1
 
-            # Extract AI content
             REVIEW_RAW=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content // empty')
-
-            # Normalize JSON: remove enclosing quotes if returned as string
             REVIEW_RAW=$(echo "$REVIEW_RAW" | tr -d '\n' | sed 's/\\n/ /g' | sed 's/\\"/"/g' | sed 's/^"//;s/"$//')
-
-            # Fallback if empty
             if [ -z "$REVIEW_RAW" ]; then
               REVIEW_RAW='{"status":"PASSED","body":"No issues detected."}'
             fi
-
             echo "$REVIEW_RAW" | tee ai_review_output.txt
           fi
 
@@ -101,20 +92,15 @@ jobs:
           STATUS_FILE="ai_review_status.txt"
           touch "$REVIEW_FILE"
 
-          # Read AI output and clean formatting
           REVIEW_RAW=$(tr -d '\n' < "$REVIEW_FILE" | sed 's/\\n/ /g' | sed 's/\\"/"/g' | sed 's/^"//;s/"$//')
-
-          # Parse status and body
           STATUS=$(echo "$REVIEW_RAW" | jq -r '.status // empty' 2>/dev/null || echo "")
           BODY=$(echo "$REVIEW_RAW" | jq -r '.body // empty' 2>/dev/null || echo "")
 
-          # Fallback if parsing failed
           if [[ -z "$STATUS" ]]; then
             STATUS="PASSED"
             BODY="No issues detected or could not parse AI output."
           fi
 
-          # Normalize status
           case "$STATUS" in
             CRITICAL_ISSUE) NORMALIZED="CRITICAL" ;;
             IMPROVEMENTS)   NORMALIZED="IMPROVEMENTS" ;;
@@ -122,7 +108,12 @@ jobs:
             *)              NORMALIZED="PASSED" ;;
           esac
 
-          # Write final status file
+          # Fail the workflow if CRITICAL detected (prevents merge)
+          if [[ "$NORMALIZED" == "CRITICAL" ]]; then
+            echo "CRITICAL issues detected. Blocking merge."
+            exit 1
+          fi
+
           {
             echo "Status: $NORMALIZED"
             echo ""
@@ -130,14 +121,11 @@ jobs:
           } > "$STATUS_FILE"
 
       - name: Post AI Review as PR Comment
-        if: github.event_name == 'pull_request'
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           set -euo pipefail
           COMMENT=$(cat ai_review_status.txt)
-
-          # Format multi-line comment safely for GitHub
           JSON_BODY=$(jq -Rn --arg text "$COMMENT" '{"body": $text}')
 
           PR_NUMBER=${{ github.event.pull_request.number }}
