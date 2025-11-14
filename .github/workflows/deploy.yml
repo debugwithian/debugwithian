@@ -73,7 +73,7 @@ jobs:
               },
               {
                 role: "user",
-                content: ("Review the following git diff for potential problems (logic, syntax, style, performance, security). Include only one: CRITICAL if it is critial, IMPROVEMENTS if it is improvement section, Passed as no any issues in Markdown with code blocks.\n\n" + $diff)
+                content: ("Review the following git diff for potential problems (logic, syntax, style, performance, security). Include only one: CRITICAL if it is critial, IMPROVEMENTS if it is improvement section, OR Passed as no any issues - in Markdown with code blocks.\n\n" + $diff)
               }
             ]
           }')
