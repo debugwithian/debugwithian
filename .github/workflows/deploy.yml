@@ -17,6 +17,8 @@ jobs:
   ai_code_review:
     name: 🤖 AI Code Review via Groq
     runs-on: ubuntu-latest
+    outputs:
+      review_status: ${{ steps.set_status.outputs.review_status }}
 
     steps:
       - name: Checkout code
@@ -83,44 +85,47 @@ jobs:
             # Extract AI content
             REVIEW_RAW=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content // empty')
 
-            # Normalize JSON: remove enclosing quotes if returned as string
+            # Normalize JSON (remove extra quotes if returned as string)
             if [[ "$REVIEW_RAW" =~ ^\".*\"$ ]]; then
               REVIEW_RAW=$(echo "$REVIEW_RAW" | sed 's/^"//;s/"$//' | sed 's/\\"/"/g')
             fi
 
-            # Fallback if empty
-            if [ -z "$REVIEW_RAW" ]; then
-              REVIEW_RAW='{"status":"PASSED","body":"No issues detected."}'
-            fi
+            # Validate JSON, fallback if invalid
+            echo "$REVIEW_RAW" | jq . >/dev/null 2>&1 || REVIEW_RAW='{"status":"PASSED","body":"No issues detected."}'
 
+            # Save normalized JSON
             echo "$REVIEW_RAW" | tee ai_review_output.txt
           fi
 
       - name: Analyze AI Review
+        id: set_status
         run: |
           set -euo pipefail
           REVIEW_FILE="ai_review_output.txt"
           STATUS_FILE="ai_review_status.txt"
           touch "$REVIEW_FILE"
 
-          # Extract status and body safely
           STATUS=$(jq -r '.status // empty' "$REVIEW_FILE" 2>/dev/null || echo "")
           BODY=$(jq -r '.body // empty' "$REVIEW_FILE" 2>/dev/null || echo "")
 
-          # Format output with if/elif/else
           if [[ "$STATUS" == "CRITICAL_ISSUE" ]]; then
             echo "Status: CRITICAL_ISSUE" > "$STATUS_FILE"
+            REVIEW_RESULT="CRITICAL_ISSUE"
           elif [[ "$STATUS" == "IMPROVEMENTS" ]]; then
             echo "Status: IMPROVEMENTS" > "$STATUS_FILE"
+            REVIEW_RESULT="IMPROVEMENTS"
           elif [[ "$STATUS" == "PASSED" ]]; then
             echo "Status: PASSED" > "$STATUS_FILE"
+            REVIEW_RESULT="PASSED"
           else
             echo "Status: INVALID" > "$STATUS_FILE"
+            REVIEW_RESULT="INVALID"
           fi
 
-          # Append body under status
           echo "" >> "$STATUS_FILE"
           echo "$BODY" >> "$STATUS_FILE"
+
+          echo "review_status=$REVIEW_RESULT" >> "$GITHUB_OUTPUT"
 
       - name: Post AI Review as PR Comment
         if: github.event_name == 'pull_request'
@@ -144,7 +149,8 @@ jobs:
   deploy:
     name: 🚀 Deploy to AWS
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/prod_v2'
+    needs: ai_code_review
+    if: needs.ai_code_review.outputs.review_status != 'CRITICAL_ISSUE' && github.event_name == 'push' && github.ref == 'refs/heads/prod_v2'
 
     steps:
       - name: Checkout code
