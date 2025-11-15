@@ -107,28 +107,27 @@ jobs:
           if ! jq empty "$REVIEW_FILE" >/dev/null 2>&1; then
             RAW=$(<"$REVIEW_FILE")
 
-            # Try to extract a status from the raw text (even if JSON is broken)
-            DETECTED_STATUS=$(echo "$RAW" | grep -o '"status":[ ]*"[^"]*"' | sed 's/"status":[ ]*"\([^"]*\)"/\1/' || true)
+            # Detect status from raw text
+            DETECTED_STATUS=$(echo "$RAW" | grep -o '"status"[ ]*:[ ]*"[^"]*"' | sed 's/.*"status"[ ]*:[ ]*"\([^"]*\)".*/\1/' || true)
+            [ -z "$DETECTED_STATUS" ] && DETECTED_STATUS="PASSED"
 
-            # Fallback if no valid status found
-            if [ -z "$DETECTED_STATUS" ]; then
-              DETECTED_STATUS="PASSED"
-            fi
+            # Try extracting the body using jq raw-input mode (handles multiline!)
+            EXTRACTED_BODY=$(printf "%s" "$RAW" | jq -R 'capture("\"body\"[ ]*:[ ]*\"(?<b>.*?)\""; "m") | .b' 2>/dev/null || echo "")
 
-            # Extract body using regex even if JSON is broken
-            EXTRACTED_BODY=$(echo "$RAW" | sed -n 's/.*"body":[ ]*"\(.*\)".*/\1/p')
-
-            # If body wasn't extracted (invalid JSON structure)
+            # If jq couldn’t extract body → fallback: try parsing as JSON
             if [ -z "$EXTRACTED_BODY" ]; then
-              EXTRACTED_BODY="$RAW"   # fallback: raw markdown
+              EXTRACTED_BODY=$(echo "$RAW" | jq -r '.body' 2>/dev/null || echo "")
             fi
 
-            # Safely encode body for JSON
+            # Final fallback → use raw AI response
+            [ -z "$EXTRACTED_BODY" ] && EXTRACTED_BODY="$RAW"
+
+            # Safely escape body
             SAFE_BODY=$(printf "%s" "$EXTRACTED_BODY" | jq -Rs '.')
 
-            # Rebuild JSON using correct body only
             echo "{\"status\":\"$DETECTED_STATUS\",\"body\":$SAFE_BODY}" > "$REVIEW_FILE"
           fi
+
 
 
           # Extract status safely
