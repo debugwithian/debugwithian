@@ -98,24 +98,21 @@ jobs:
           REVIEW_FILE="ai_review_output.txt"
           RAW=$(<"$REVIEW_FILE")
 
-          # Extract JSON object from AI response
+          # --- 1. Extract JSON object from AI response
           INNER_JSON=$(echo "$RAW" | grep -oP '\{.*\}' | jq -c '.' 2>/dev/null || true)
 
           if [ -n "$INNER_JSON" ]; then
               DETECTED_STATUS=$(jq -r '.status' <<< "$INNER_JSON")
               EXTRACTED_BODY=$(jq -r '.body' <<< "$INNER_JSON")
-
-              # Remove nested JSON/code fences if present
-              if [[ "$EXTRACTED_BODY" =~ ^\`\`\` ]]; then
-                  EXTRACTED_BODY=$(echo "$EXTRACTED_BODY" | sed -E '1d;$d')
-                  EXTRACTED_BODY=$(echo "$EXTRACTED_BODY" | jq -r '.body // .' 2>/dev/null || echo "$EXTRACTED_BODY")
-              fi
           else
               DETECTED_STATUS="PASSED"
               EXTRACTED_BODY="$RAW"
           fi
 
-          # Normalize status to a single one
+          # --- 2. Remove nested ```json``` fences inside body if present
+          EXTRACTED_BODY=$(echo "$EXTRACTED_BODY" | sed -E '/^```json/,/^```$/d')
+
+          # --- 3. Normalize status to a single one
           case "$DETECTED_STATUS" in
             CRITICAL* ) NORMALIZED="CRITICAL" ;;
             IMPROVEMENTS ) NORMALIZED="IMPROVEMENTS" ;;
@@ -123,17 +120,14 @@ jobs:
             * ) NORMALIZED="IMPROVEMENTS" ;;
           esac
 
-          # Prepend status for PR comment
-          EXTRACTED_BODY="Status: $NORMALIZED\n\n$EXTRACTED_BODY"
-
-          # Escape safely for JSON
+          # --- 4. Escape body safely for JSON
           SAFE_BODY=$(printf "%s" "$EXTRACTED_BODY" | jq -Rs '.')
 
-          # Write cleaned JSON back
+          # --- 5. Write cleaned JSON back
           printf '{"status":"%s","body":%s}\n' "$NORMALIZED" "$SAFE_BODY" > "$REVIEW_FILE"
 
-          # Write PR comment
-          echo -e "$EXTRACTED_BODY" > ai_review_status.txt
+          # --- 6. Write PR comment including status for readability
+          echo -e "Status: $NORMALIZED\n\n$EXTRACTED_BODY" > ai_review_status.txt
           echo "review_status=$NORMALIZED" >> $GITHUB_OUTPUT
 
       - name: Post AI Review as PR Comment
