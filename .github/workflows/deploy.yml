@@ -101,24 +101,51 @@ jobs:
           REVIEW_FILE="ai_review_output.txt"
           RAW=$(<"$REVIEW_FILE")
 
-          # --- 1. Extract JSON object from AI output
-          INNER_JSON=$(echo "$RAW" | grep -oP '\{(?:[^{}]|(?R))*\}' | head -n 1 || true)
+          ###########################################################################
+          # 1. Extract ONLY the first valid JSON object from the AI response
+          ###########################################################################
+          INNER_JSON=$(printf "%s" "$RAW" | grep -oP '\{(?:[^{}]|(?R))*\}' | head -n 1 || true)
 
           if [ -n "${INNER_JSON:-}" ]; then
-              DETECTED_STATUS=$(jq -r '.status' <<< "$INNER_JSON" 2>/dev/null || echo "IMPROVEMENTS")
-              EXTRACTED_BODY=$(jq -r '.body' <<< "$INNER_JSON" 2>/dev/null || echo "$RAW")
+              DETECTED_STATUS=$(jq -r '.status // empty' <<< "$INNER_JSON" 2>/dev/null || echo "IMPROVEMENTS")
+              EXTRACTED_BODY=$(jq -r '.body // empty' <<< "$INNER_JSON" 2>/dev/null || printf "%s" "$RAW")
           else
               DETECTED_STATUS="PASSED"
               EXTRACTED_BODY="$RAW"
           fi
 
-          # --- 2. Remove ALL fenced code blocks (json, html, js, ANYTHING)
+          ###########################################################################
+          # 2. Remove ALL fenced code blocks (```json, ```html, ```js, ANYTHING)
+          ###########################################################################
           EXTRACTED_BODY=$(printf "%s" "$EXTRACTED_BODY" | sed -E '/^```/,/^```$/d')
 
-          # --- 3. Remove stray HTML tags accidentally included (common Groq bug)
+          ###########################################################################
+          # 3. Remove ANY nested JSON inside the body (multi-line safe)
+          ###########################################################################
+          EXTRACTED_BODY=$(printf "%s" "$EXTRACTED_BODY" | awk '
+            BEGIN { in_json=0 }
+            /^\{/ { in_json=1 }
+            in_json==0 { print }
+            /\}/ { in_json=0 }
+          ')
+
+          ###########################################################################
+          # 4. Remove stray HTML tags the AI may output
+          ###########################################################################
           EXTRACTED_BODY=$(printf "%s" "$EXTRACTED_BODY" | sed -E 's/<[^>]+>//g')
 
-          # --- 4. Normalize status
+          ###########################################################################
+          # 5. Clean up broken escapes, double quotes, odd trailing slashes
+          ###########################################################################
+          EXTRACTED_BODY=$(printf "%s" "$EXTRACTED_BODY" \
+              | sed -E 's/\\n/\n/g' \
+              | sed -E 's/\\r/\r/g' \
+              | sed -E 's/\\"/"/g' \
+              | sed -E 's/\\\\/\\/g')
+
+          ###########################################################################
+          # 6. Normalize status
+          ###########################################################################
           case "$DETECTED_STATUS" in
             CRITICAL* ) NORMALIZED="CRITICAL_ISSUE" ;;
             IMPROVEMENTS ) NORMALIZED="IMPROVEMENTS" ;;
@@ -126,13 +153,19 @@ jobs:
             * ) NORMALIZED="IMPROVEMENTS" ;;
           esac
 
-          # --- 5. Escape body content safely for JSON
+          ###########################################################################
+          # 7. Escape body safely for JSON output
+          ###########################################################################
           SAFE_BODY=$(printf "%s" "$EXTRACTED_BODY" | jq -Rs '.')
 
-          # --- 6. Save final cleaned JSON
+          ###########################################################################
+          # 8. Write CLEAN JSON back to file
+          ###########################################################################
           printf '{"status":"%s","body":%s}\n' "$NORMALIZED" "$SAFE_BODY" > "$REVIEW_FILE"
 
-          # --- 7. Export status & human-readable text
+          ###########################################################################
+          # 9. Write human readable PR comment
+          ###########################################################################
           {
             echo "Status: $NORMALIZED"
             echo
@@ -140,7 +173,6 @@ jobs:
           } > ai_review_status.txt
 
           echo "review_status=$NORMALIZED" >> "$GITHUB_OUTPUT"
-
 
       - name: Post AI Review as PR Comment
         env:
