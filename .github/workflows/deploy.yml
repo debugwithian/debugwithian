@@ -52,7 +52,7 @@ jobs:
             git diff $BASE HEAD > diff.txt
             echo "diff_exists=true" >> $GITHUB_OUTPUT
           else
-            echo '{"status":"PASSED","body":"✅ No issues detected."}' > ai_review_output.txt
+            echo '{"status":"PASSED","content":"✅ No issues detected."}' > ai_review_output.txt
             echo "diff_exists=false" >> $GITHUB_OUTPUT
           fi
 
@@ -85,7 +85,7 @@ jobs:
 
           REVIEW_RAW=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content // empty')
 
-          # Force remove fenced code blocks like ```json ... ```
+          # Remove nested ```json fences if present
           REVIEW_RAW=$(printf "%s" "$REVIEW_RAW" | sed -E 's/```json//g;s/```//g')
 
           if [ -z "$REVIEW_RAW" ]; then
@@ -101,21 +101,21 @@ jobs:
           REVIEW_FILE="ai_review_output.txt"
           RAW=$(<"$REVIEW_FILE")
 
-          # --- 1. Extract JSON object from AI response
-          INNER_JSON=$(echo "$RAW" | grep -oP '\{.*\}' | jq -c '.' 2>/dev/null || true)
+          # --- 1. Extract first valid JSON object
+          INNER_JSON=$(printf "%s" "$RAW" | grep -oP '\{(?:[^{}]|(?R))*\}' | head -n 1 || true)
 
           if [ -n "$INNER_JSON" ]; then
-              DETECTED_STATUS=$(jq -r '.status' <<< "$INNER_JSON")
-              EXTRACTED_BODY=$(jq -r '.body // .content // empty' <<< "$INNER_JSON")
+              DETECTED_STATUS=$(jq -r '.status // empty' <<< "$INNER_JSON")
+              EXTRACTED_BODY=$(jq -r '.content // empty' <<< "$INNER_JSON")
           else
               DETECTED_STATUS="PASSED"
               EXTRACTED_BODY="$RAW"
           fi
 
-          # --- 2. Remove nested ```json``` fences inside content
-          EXTRACTED_BODY=$(echo "$EXTRACTED_BODY" | sed -E '/^```json/,/^```$/d')
+          # --- 2. Remove any remaining fenced code blocks
+          EXTRACTED_BODY=$(printf "%s" "$EXTRACTED_BODY" | sed -E '/^```/,/^```$/d')
 
-          # --- 3. Normalize status to a single one
+          # --- 3. Normalize status
           case "$DETECTED_STATUS" in
             CRITICAL* ) NORMALIZED="CRITICAL" ;;
             IMPROVEMENTS ) NORMALIZED="IMPROVEMENTS" ;;
@@ -126,13 +126,13 @@ jobs:
           # --- 4. Escape for JSON
           SAFE_BODY=$(printf "%s" "$EXTRACTED_BODY" | jq -Rs '.')
 
-          # --- 5. Save cleaned JSON using "content"
+          # --- 5. Write cleaned JSON back to file with "content"
           printf '{"status":"%s","content":%s}\n' "$NORMALIZED" "$SAFE_BODY" > "$REVIEW_FILE"
 
-          # --- 6. Save PR comment ALWAYS as:
-          # Status: X
+          # --- 6. Save PR comment in desired format:
+          # Status: <STATUS>
           #
-          # <content>
+          # <CONTENT>
           {
             echo "Status: $NORMALIZED"
             echo
@@ -140,7 +140,6 @@ jobs:
           } > ai_review_status.txt
 
           echo "review_status=$NORMALIZED" >> $GITHUB_OUTPUT
-
 
       - name: Post AI Review as PR Comment
         env:
