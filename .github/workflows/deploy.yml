@@ -69,7 +69,7 @@ jobs:
             messages: [
               {
                 role: "system",
-                content: "You are a senior software engineer performing a strict code review. Return ONLY a single valid JSON object: {\"status\": \"CRITICAL_ISSUE|IMPROVEMENTS|PASSED\", \"body\": \"Markdown PR comment\"}. Format all code snippets with triple backticks and language hints (```html, ```js), use actual newlines, escape quotes properly, and include headings, bullet points, and preformatted code blocks. Do not return text outside JSON."
+                content: "You are a senior software engineer performing a strict code review. Return ONLY a single valid JSON object - please validate return it in the correct JSON Format: {\"status\": \"CRITICAL_ISSUE|IMPROVEMENTS|PASSED\", \"body\": \"Markdown PR comment\"}. Format all code snippets with triple backticks and language hints (```html, ```js), use actual newlines, escape quotes properly, and include headings, bullet points, and preformatted code blocks. Do not return text outside JSON."
               },
               {
                 role: "user",
@@ -103,11 +103,25 @@ jobs:
           fi
 
           # Ensure valid JSON (wrap raw Markdown if AI returned invalid JSON)
+          # Check if AI returned valid JSON
           if ! jq empty "$REVIEW_FILE" >/dev/null 2>&1; then
-            CONTENT=$(<"$REVIEW_FILE")
-            # Safely encode all newlines, quotes, and control characters
-            echo "{\"status\":\"CRITICAL_ISSUE\",\"body\":$(jq -Rs --arg text "$CONTENT" '$text')}" > "$REVIEW_FILE"
+            RAW=$(<"$REVIEW_FILE")
+
+            # Try to extract a status from the raw text (even if JSON is broken)
+            DETECTED_STATUS=$(echo "$RAW" | grep -o '"status":[ ]*"[^"]*"' | sed 's/"status":[ ]*"\([^"]*\)"/\1/' || true)
+
+            # Fallback if no valid status found
+            if [ -z "$DETECTED_STATUS" ]; then
+              DETECTED_STATUS="CRITICAL_ISSUE"
+            fi
+
+            # Safely encode the body text
+            SAFE_BODY=$(printf "%s" "$RAW" | jq -Rs '.')
+
+            # Rebuild JSON preserving the AI’s intended status
+            echo "{\"status\":\"$DETECTED_STATUS\",\"body\":$SAFE_BODY}" > "$REVIEW_FILE"
           fi
+
 
           # Extract status safely
           RAW_STATUS=$(jq -r '.status // "PASSED"' "$REVIEW_FILE")
