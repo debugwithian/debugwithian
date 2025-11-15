@@ -101,7 +101,7 @@ jobs:
           REVIEW_FILE="ai_review_output.txt"
           RAW=$(<"$REVIEW_FILE")
 
-          # --- 1. Extract first valid JSON object
+          # 1. Extract only the first valid JSON object
           INNER_JSON=$(printf "%s" "$RAW" | grep -oP '\{(?:[^{}]|(?R))*\}' | head -n 1 || true)
 
           if [ -n "$INNER_JSON" ]; then
@@ -112,27 +112,25 @@ jobs:
               EXTRACTED_BODY="$RAW"
           fi
 
-          # --- 2. Remove any remaining fenced code blocks
-          EXTRACTED_BODY=$(printf "%s" "$EXTRACTED_BODY" | sed -E '/^```/,/^```$/d')
+          # 2. Remove any leftover nested JSON inside the content
+          EXTRACTED_BODY=$(echo "$EXTRACTED_BODY" | sed -E 's/\{.*\}//g')
 
-          # --- 3. Normalize status
+          # 3. Normalize status
           case "$DETECTED_STATUS" in
-            CRITICAL* ) NORMALIZED="CRITICAL" ;;
+            CRITICAL* ) NORMALIZED="CRITICAL_ISSUE" ;;
             IMPROVEMENTS ) NORMALIZED="IMPROVEMENTS" ;;
             PASSED ) NORMALIZED="PASSED" ;;
             * ) NORMALIZED="IMPROVEMENTS" ;;
           esac
 
-          # --- 4. Escape for JSON
+          # 4. Save cleaned JSON back to file
           SAFE_BODY=$(printf "%s" "$EXTRACTED_BODY" | jq -Rs '.')
-
-          # --- 5. Write cleaned JSON back to file with "content"
           printf '{"status":"%s","content":%s}\n' "$NORMALIZED" "$SAFE_BODY" > "$REVIEW_FILE"
 
-          # --- 6. Save PR comment in desired format:
+          # 5. Write PR comment as:
           # Status: <STATUS>
           #
-          # <CONTENT>
+          # <content>
           {
             echo "Status: $NORMALIZED"
             echo
@@ -140,6 +138,7 @@ jobs:
           } > ai_review_status.txt
 
           echo "review_status=$NORMALIZED" >> $GITHUB_OUTPUT
+
 
       - name: Post AI Review as PR Comment
         env:
