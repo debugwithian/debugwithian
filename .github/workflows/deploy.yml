@@ -69,14 +69,15 @@ jobs:
             messages: [
               {
                 role: "system",
-                content: "You are a senior software engineer performing a strict code review. Return ONLY a single valid JSON object with two keys: {\"status\": \"CRITICAL_ISSUE|IMPROVEMENTS|PASSED\", \"content\": \"Markdown PR comment including headings, bullets, and code blocks\"}. Do NOT return anything outside JSON. Only one status per response. Include full Markdown formatting with headings, bullets, and code blocks. Escape value if necessary as this should be a fully correct json output"
+                content: "You are a senior software engineer performing a strict code review. You MUST return ONLY a single valid JSON object with EXACTLY two keys: {\"status\": \"CRITICAL_ISSUE|IMPROVEMENTS|PASSED\", \"content\": \"Markdown PR comment\"}. The entire response must be valid JSON with all necessary escaping. Do NOT output anything outside the JSON object. Do NOT include multiple JSON objects. Do NOT include commentary, explanation, or extra text before or after the JSON. Markdown formatting must be inside the JSON string and must be escaped as required to produce valid JSON."
               },
               {
                 role: "user",
-                content: ("Review the following git diff for potential problems (logic, syntax, style, performance, security). Return only one of: CRITICAL_ISSUE if critical issues exist, IMPROVEMENTS if suggestions exist, or PASSED if no issues. Include detailed Markdown with headings, bullets, and preformatted code blocks.\n\n" + $diff)
+                content: ("Review the following git diff for logic, syntax, style, performance, and security issues. Return:\n- CRITICAL_ISSUE → if any breaking, fatal, or blocking issues exist\n- IMPROVEMENTS → if only non-critical improvements exist\n- PASSED → if no issues exist\n\nReturn only valid JSON.\n\nDiff:\n\n" + $diff)
               }
             ]
           }')
+
 
           RAW_RESPONSE=$(curl -sS --fail https://api.groq.com/openai/v1/chat/completions \
             -H "Content-Type: application/json" \
