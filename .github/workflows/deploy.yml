@@ -99,29 +99,31 @@ jobs:
         id: set_review_status
         run: |
           set -euo pipefail
-
           REVIEW_FILE="ai_review_output.txt"
           CLEAN_FILE="ai_review_output_clean.json"
 
-          # Read AI JSON safely
+          # Read AI output
           RAW=$(<"$REVIEW_FILE")
 
           echo "🔹 Raw AI output:"
           echo "$RAW"
           echo "----------------------------------------"
 
-          # Strip accidental ```json fences
+          # Strip ```json fences if any
           RAW=$(printf "%s" "$RAW" | sed -E 's/```json//g;s/```//g')
 
+          # Escape JSON properly for jq
+          SAFE_JSON=$(jq -Rs . <<<"$RAW")
+
           # Validate JSON
-          if ! echo "$RAW" | jq . >/dev/null 2>&1; then
+          if ! echo "$SAFE_JSON" | jq . >/dev/null 2>&1; then
               echo "❌ AI returned invalid JSON. Merge blocked."
               exit 1
           fi
 
-          # Extract fields safely
-          DETECTED_STATUS=$(echo "$RAW" | jq -r '.status // "IMPROVEMENTS"')
-          EXTRACTED_BODY=$(echo "$RAW" | jq -r '.content // ""')
+          # Extract status and content
+          DETECTED_STATUS=$(echo "$SAFE_JSON" | jq -r '. | fromjson? | .status // "IMPROVEMENTS"')
+          EXTRACTED_BODY=$(echo "$SAFE_JSON" | jq -r '. | fromjson? | .content // ""')
 
           # Normalize status
           STATUS_UPPER=$(echo "$DETECTED_STATUS" | tr '[:lower:]' '[:upper:]' | tr -d ' ')
@@ -135,7 +137,7 @@ jobs:
           echo "🔹 Normalized Status: $NORMALIZED"
           echo "----------------------------------------"
 
-          # Rebuild JSON safely (escapes newlines, quotes)
+          # Rebuild JSON safely
           jq -n --arg status "$NORMALIZED" --arg content "$EXTRACTED_BODY" \
              '{status: $status, content: $content}' > "$CLEAN_FILE"
 
@@ -148,8 +150,9 @@ jobs:
 
           echo "✅ PR comment written to ai_review_status.txt"
 
-          # Output for next workflow steps
+          # Output status for next workflow steps
           echo "review_status=$NORMALIZED" >> "$GITHUB_OUTPUT"
+
 
 
       - name: Post AI Review as PR Comment
