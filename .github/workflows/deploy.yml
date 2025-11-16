@@ -54,6 +54,7 @@ jobs:
           else
             echo "No issues detected." > ai_review_output.txt
             echo "diff_exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Run AI Code Review (Groq)
         id: run_ai
