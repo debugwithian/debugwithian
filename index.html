@@ -21,7 +21,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 <div id="scoreCounter"><i class="fas fa-star"></i> Score: <span id="score">0</span></div>
@@ -31,27 +31,32 @@
   <a class="navbar-brand fw-bold" href="#">Debug with Ian</a>
   <button class="playBadge" aria-label="Play game"><i class="fas fa-gamepad"></i></button>
 </nav> -->
+<div class="mobile-menu d-md-none">
+  <i class="bi bi-list" id="menu-toggle"></i>
+  <span>Debug With Ian</span>
+</div>
+<div class="mobile-nav d-md-none" id="mobileNav">
+  <a href="#about"><i class="bi bi-person-fill"></i> About</a>
+  <a href="#tech"><i class="bi bi-code-slash"></i> Tech</a>
+  <a href="#projects"><i class="bi bi-code-square"></i> Projects</a>
+  <a href="#experience"><i class="bi bi-briefcase-fill"></i> Experience</a>
+  <a href="#contact"><i class="bi bi-chat-dots-fill"></i> Contact</a>
+</div>
 
-<div class="container-fluid">
+<div class="sidebar">
+ <!-- <a href="#home"><div class="nav-item active" data-target="hero"><i class="bi bi-house-door-fill"></i><span>Home</span></div></a> -->
+ <a href="#about"><div class="nav-item active" data-target="about"><i class="bi bi-person-fill"></i><span>About</span></div></a>
+ <a href="#tech"><div class="nav-item" data-target="tech"><i class="bi bi-code-slash"></i><span>Tech</span></div></a>
+ <a href="#projects"><div class="nav-item" data-target="projects"><i class="bi bi-code-square"></i><span>Projects</span></div></a>
+ <a href="#experience"><div class="nav-item" data-target="experience"><i class="bi bi-briefcase-fill"></i><span>Experience</span></div></a>
+ <a href="#contact"><div class="nav-item" data-target="contact"><i class="bi bi-chat-dots-fill"></i><span>Contact</span></div></a>
+  <span class="icon-main">Debug With Ian</span>
+</div>
+<div class="layer layer-1"></div>
+<div class="layer layer-2"></div>
+<div class="layer layer-3"></div>
+<div class="container-fluid" id="main-content">
   <div class="row">
-    <header class="liquid-nav">
-      <div class="nav-container mobile">
-        <nav class="nav-links d-md-flex">
-          <a href="#about">About</a>
-          <a href="#tech">Tech Stack</a>
-          <a href="#experience">Experience</a>
-          <a href="#contact">Contact</a>
-        </nav>
-      </div>
-    </header>
-
-    <!-- Optional Mobile Menu -->
-    <div class="mobile-nav d-md-none" id="mobileNav">
-      <a href="#about">About</a>
-      <a href="#tech">Tech Stack</a>
-      <a href="#experience">Experience</a>
-      <a href="#contact">Contact</a>
-    </div>
     <main class="col-md-12 col-12 py-4 px-5">
       <section id="about" class="my-2">
         <h2 class="section-title">About Me</h2>
@@ -121,6 +126,82 @@
           <span class="badge bg-primary text-white p-2"><i class="fas fa-diagram-project"></i> Rest API/GraphQL Development</span>
           <span class="badge bg-primary text-white p-2"><i class="fas fa-chart-pie"></i> DataDog Metrics</span>
         </div>
+      </section>
+      <section id="projects" class="my-5">
+        <h2 class="section-title">Projects</h2>
+        
+        <div class="row">
+          <div class="col-12 col-md-4 col-lg-4 g-4 mt-2">
+            <div class="card card-hover h-100 p-3" style="position: relative;">
+
+              <!-- Top-right link -->
+              <a href="https://emailscraper.debugwithian.com" 
+                 target="_blank" 
+                 rel="noopener noreferrer"
+                 style="
+                   position: absolute;
+                   top: 12px;
+                   right: 12px;
+                   color: #fff;
+                   font-size: 0.9rem;
+                   text-decoration: none;
+                 ">
+                Go to page <i class="fas fa-external-link-alt"></i>
+              </a>
+
+              <div class="text-center">
+                <i class="fas fa-envelope-open-text fa-3x mb-3 text-primary"></i>
+
+                <h5 class="mb-3">Email Scraper</h5>
+
+                <p style=" font-size: 12px; font-weight: 100!important; ">
+                  A lightweight automated email-processing tool built using 
+                  <strong>Spring Boot</strong> and <strong>Thymeleaf</strong>.  
+                  It retrieves unread inbox messages, parses important details, 
+                  and stores structured data in a secure database.  
+                  Ideal for workflow automation, analytics, and CRM enrichment.
+                </p>
+              </div>
+
+            </div>
+          </div>
+            <div class="col-12 col-md-4 col-lg-4 g-4 mt-2">
+              <div class="card card-hover h-100 p-3" style="position: relative;">
+
+                <!-- Top-right link -->
+                <a href="https://debugwithian.com/code-generator.html" 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   style="
+                     position: absolute;
+                     top: 12px;
+                     right: 12px;
+                     color: #fff;
+                     font-size: 0.9rem;
+                     text-decoration: none;
+                   ">
+                  Go to page <i class="fas fa-external-link-alt"></i>
+                </a>
+
+                <div class="text-center">
+                  <i class="fas fa-project-diagram fa-3x mb-3 text-primary"></i>
+
+                  <h5 class="mb-3">Diagram to Code</h5>
+
+                  <p style=" font-size: 12px; font-weight: 100!important; "> 
+                    An interactive tool that allows users to create diagrams by dragging and connecting elements.  
+                    The tool automatically generates corresponding code in the selected programming language,  
+                    helping developers visualize logic and accelerate development workflows.
+                  </p>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+
+
+
       </section>
       <section id="experience" class="py-5">
         <div>
@@ -304,6 +385,6 @@
   </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script src="script.js?v=3"></script>
+<script src="script.js?v=14"></script>
 </body>
 </html>

@@ -237,64 +237,106 @@ aiMin.addEventListener("click", ()=>{
 });
 
 document.addEventListener("DOMContentLoaded", () => {
-    const navLinks = document.querySelectorAll(".nav-links a");
-    const sections = Array.from(navLinks).map(link => document.querySelector(link.getAttribute("href")));
 
-    // Assuming the last link is the Contact link
-    const lastNavLinkIndex = navLinks.length - 1;
-    const headerOffset = 100; // Your offset for the fixed header
+    // Get the <a> links
+    const navLinks = document.querySelectorAll(".sidebar a");
 
-    // Click event - add active class
-    navLinks.forEach(link => {
+    // The clickable highlight element is inside each <a>
+    const navItems = Array.from(navLinks).map(a => a.querySelector(".nav-item"));
+
+    // Map href → actual section
+    const sections = Array.from(navLinks).map(link => {
+        const id = link.getAttribute("href").replace("#", ""); 
+        return document.getElementById(id);
+    });
+
+    // Last nav (Contact)
+    const lastNavItemIndex = navItems.length - 1;
+
+    const headerOffset = 100; // Custom top offset
+
+    // --- CLICK HANDLER ------------------------------------------------
+    navLinks.forEach((link, i) => {
         link.addEventListener("click", (e) => {
-            navLinks.forEach(l => l.classList.remove("active"));
-            e.target.classList.add("active");
+
+            // Remove active from all nav-items
+            navItems.forEach(n => n.classList.remove("active"));
+
+            // Add active to clicked nav-item
+            navItems[i].classList.add("active");
         });
     });
 
-    // Scroll event - update active class based on section in viewport
+    // --- SCROLL HANDLER -----------------------------------------------
     window.addEventListener("scroll", () => {
-        // --- Key Fix: Use document.documentElement.scrollHeight ---
-        const totalScrollHeight = document.documentElement.scrollHeight;
-        const viewportHeight = window.innerHeight; 
+
+        const totalHeight = document.documentElement.scrollHeight;
+        const viewportHeight = window.innerHeight;
         const currentScroll = window.scrollY;
 
-        // 1. Check if the user is at the very bottom of the page
-        // Check if the scroll position + viewport height is close to the total scrollable height
-        // The '+ 1' ensures we catch the exact bottom reliably.
-        const isAtBottom = (currentScroll + viewportHeight) >= (totalScrollHeight - 1);
+        // --- Detect bottom of page ---
+        const isAtBottom = (currentScroll + viewportHeight) >= (totalHeight - 1);
 
         if (isAtBottom) {
-            // 2. If at the bottom, force the last link (Contact) to be active
-            navLinks.forEach(link => link.classList.remove("active"));
-            navLinks[lastNavLinkIndex].classList.add("active");
-            return; // Exit the function to prevent the loop from overriding
-        } 
-        
-        // 3. Proceed with the standard section-in-viewport logic
-        // Only run this if we are NOT at the bottom
-        let scrollPos = currentScroll + headerOffset;
-        let foundActive = false;
-        
-        // Loop backwards for better section detection, especially for small sections
+            navItems.forEach(n => n.classList.remove("active"));
+            navItems[lastNavItemIndex].classList.add("active");
+            return;
+        }
+
+        // Scroll detection reference point
+        let targetScrollY = currentScroll + headerOffset;
+
+        let matchedSectionIndex = -1;
+
+        // Loop bottom→up to find active section
         for (let i = sections.length - 1; i >= 0; i--) {
-            const section = sections[i];
-            
-            if (section.offsetTop <= scrollPos) {
-                // If the section's top is visible (or above the scrollPos line)
-                navLinks.forEach(link => link.classList.remove("active"));
-                navLinks[i].classList.add("active");
-                foundActive = true;
-                break; // Stop loop once the highest section is found
+            const sec = sections[i];
+            if (!sec) continue;
+
+            if (sec.offsetTop <= targetScrollY) {
+                matchedSectionIndex = i;
+                break;
             }
         }
-        
-        // Optional: If the user is scrolling above the first section (top of the page)
-        if (!foundActive && currentScroll < headerOffset) {
-            navLinks.forEach(link => link.classList.remove("active"));
-            navLinks[0].classList.add("active");
+
+        navItems.forEach(n => n.classList.remove("active"));
+
+        if (matchedSectionIndex >= 0) {
+            navItems[matchedSectionIndex].classList.add("active");
+        } else {
+            // User is above first section
+            navItems[0].classList.add("active");
         }
     });
+
 });
 
+
 document.addEventListener("visibilitychange", ()=>{ if(document.hidden) localStorage.setItem("rbid_minigame_score", score); });
+
+// MOBILE NAVIGATION
+document.getElementById("menu-toggle").addEventListener("click", () => {
+  const nav = document.getElementById("mobileNav");
+  const icon = document.getElementById("menu-toggle");
+
+  nav.classList.toggle("open");
+
+  // toggle icon (X)
+  if (nav.classList.contains("open")) {
+    icon.classList.remove("bi-list");
+    icon.classList.add("bi-x-lg");
+  } else {
+    icon.classList.add("bi-list");
+    icon.classList.remove("bi-x-lg");
+  }
+});
+
+// Close mobile nav when clicking a link
+document.querySelectorAll("#mobileNav a").forEach(link => {
+  link.addEventListener("click", () => {
+    document.getElementById("mobileNav").classList.remove("open");
+    const icon = document.getElementById("menu-toggle");
+    icon.classList.add("bi-list");
+    icon.classList.remove("bi-x-lg");
+  });
+});
