@@ -124,59 +124,79 @@ jobs:
 
       - name: Deploy Dynamic Branch Environment
         run: |
-         ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "bash -c '
-           set -e
-          
-           BRANCH=\"\${GITHUB_HEAD_REF:-\${GITHUB_REF##refs/heads/}}\"
-           DOMAIN=\"\$BRANCH.debugwithian.com\"
-           NGINX_FILE=\"/etc/nginx/sites-available/\$BRANCH.conf\"
-          
-           # Define Nginx Configs as escaped variables for echo/printf
-           # *** FIX: Prepending \\n to ensure a clean start on line 1 ***
-           NGINX_TEMP_CONFIG=\"\\nserver {\\n    listen 80;\\n    listen [::]:80;\\n    server_name \${DOMAIN};\\n    location / {\\n        return 200 \\\"OK\\\";\\n    }\\n}\"
+          ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "bash -c '
+            set -e
 
-           # *** FIX: Prepending \\n to ensure a clean start on line 1 ***
-           # Nginx variables escaped as \\\\\\$
-           NGINX_FINAL_CONFIG=\"\\nserver {\\n    listen 80;\\n    listen [::]:80;\\n    server_name \${DOMAIN};\\n    return 301 https://\\\\\$host\\\\\$request_uri;\\n}\\n\\nserver {\\n    listen 443 ssl http2;\\n    listen [::]:443 ssl http2;\\n    server_name \${DOMAIN};\\n\\n    ssl_certificate /etc/letsencrypt/live/\${DOMAIN}/fullchain.pem;\\n    ssl_certificate_key /etc/letsencrypt/live/\${DOMAIN}/privkey.pem;\\n    include /etc/letsencrypt/options-ssl-nginx.conf;\\n    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;\\n\\n    location / {\\n        proxy_pass http://localhost:\${PORT};\\n        proxy_set_header Host \\\\\$host;\\n        proxy_set_header X-Real-IP \\\\\$remote_addr;\\n        proxy_set_header X-Forwarded-For \\\\\$proxy_add_x_forwarded_for;\\n        proxy_set_header X-Forwarded-Proto \\\\\$scheme;\\n    }\\n}\"
-          
-           # Check if the Nginx config file already exists
-           if [ -f \"\$NGINX_FILE\" ]; then
-             echo \"Nginx config for \$DOMAIN already exists. Skipping domain creation and SSL request.\"
-           else
-             echo \"Nginx config for \$DOMAIN not found. Creating new domain and requesting SSL.\"
-            
-             # PORT logic (Escaping the nested single quote for awk: '\''{print \$9}'\'' )
-             PORT=\$(
-              (seq 8090 8500 | grep -v -f <(sudo lsof -i -P -n | grep LISTEN | awk '\"'\"'{print \$9}'\"'\"' | sed '\''s/.*://'\'') | head -n1) 2>/dev/null
-             )
-             echo \"Using port: \$PORT for branch: \$BRANCH\"
-            
-             # Temporary Nginx config for certbot - *** NO HEREDOC ***
-             echo -e \"\$NGINX_TEMP_CONFIG\" | sudo tee \"\$NGINX_FILE\" > /dev/null
-               
-             sudo ln -sf \"\$NGINX_FILE\" /etc/nginx/sites-enabled/
-             sudo systemctl reload nginx || true
-            
-             # Request SSL
-             sudo certbot --nginx -d \$DOMAIN --non-interactive --agree-tos -m ddiamanterbitwilio@gmail.com || true
-           fi
-          
-           # Overwrite Nginx config with real proxy
-           if [ -z \"\$PORT\" ]; then
-             # Re-run port finding logic if domain config already existed
-             PORT=\$(
-              (seq 8090 8500 | grep -v -f <(sudo lsof -i -P -n | grep LISTEN | awk '\"'\"'{print \$9}'\"'\"' | sed '\''s/.*://'\'') | head -n1) 2>/dev/null
-             )
-           fi
-           echo \"Final port for configuration: \$PORT\"
-          
-           # Overwrite Nginx config with real proxy - *** NO HEREDOC ***
-           echo -e \"\$NGINX_FINAL_CONFIG\" | sudo tee \"\$NGINX_FILE\" > /dev/null
-          
-           sudo ln -sf \"\$NGINX_FILE\" /etc/nginx/sites-enabled/
-           # Use config test before reload to check for syntax errors
-           sudo nginx -t && sudo systemctl reload nginx
-         '"
+            BRANCH=\"\${GITHUB_HEAD_REF:-\${GITHUB_REF##refs/heads/}}\"
+            DOMAIN=\"\$BRANCH.debugwithian.com\"
+            NGINX_FILE=\"/etc/nginx/sites-available/\$BRANCH.conf\"
+
+            # Find a free port for this branch
+            PORT=\$(
+              seq 8090 8500 | grep -v -f <(sudo lsof -i -P -n | grep LISTEN | awk '\''{print \$9}'\'') | head -n1
+            )
+            echo \"Using port: \$PORT for branch: \$BRANCH\"
+
+            # Temporary Nginx config for certbot
+            NGINX_TEMP_CONFIG=\"server {
+                listen 80;
+                listen [::]:80;
+                server_name \$DOMAIN;
+                location / {
+                    return 200 \\\"OK\\\";
+                }
+            }\"
+
+            # Final Nginx config with proxy
+            NGINX_FINAL_CONFIG=\"server {
+                listen 80;
+                listen [::]:80;
+                server_name \$DOMAIN;
+                return 301 https://\\\$host\\\$request_uri;
+            }
+
+            server {
+                listen 443 ssl http2;
+                listen [::]:443 ssl http2;
+                server_name \$DOMAIN;
+
+                ssl_certificate /etc/letsencrypt/live/\$DOMAIN/fullchain.pem;
+                ssl_certificate_key /etc/letsencrypt/live/\$DOMAIN/privkey.pem;
+                include /etc/letsencrypt/options-ssl-nginx.conf;
+                ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+                location / {
+                    proxy_pass http://localhost:\$PORT;
+                    proxy_set_header Host \\\$host;
+                    proxy_set_header X-Real-IP \\\$remote_addr;
+                    proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto \\\$scheme;
+                }
+            }\"
+
+            # If config exists, skip creation and SSL
+            if [ -f \"\$NGINX_FILE\" ]; then
+              echo \"Nginx config for \$DOMAIN already exists. Skipping creation and SSL request.\"
+            else
+              echo \"Nginx config for \$DOMAIN not found. Creating and requesting SSL...\"
+
+              # Write temporary config for certbot
+              echo -e \"\$NGINX_TEMP_CONFIG\" | sudo tee \"\$NGINX_FILE\" > /dev/null
+              sudo ln -sf \"\$NGINX_FILE\" /etc/nginx/sites-enabled/
+              sudo systemctl reload nginx || true
+
+              # Request SSL
+              sudo certbot --nginx -d \$DOMAIN --non-interactive --agree-tos -m ddiamanterbitwilio@gmail.com || true
+            fi
+
+            # Overwrite Nginx config with final proxy config
+            echo -e \"\$NGINX_FINAL_CONFIG\" | sudo tee \"\$NGINX_FILE\" > /dev/null
+            sudo ln -sf \"\$NGINX_FILE\" /etc/nginx/sites-enabled/
+
+            # Test config and reload Nginx
+            sudo nginx -t && sudo systemctl reload nginx
+          '"
+
                  
   deploy:
     name: 🚀 Deploy to AWS (prod_v2)
