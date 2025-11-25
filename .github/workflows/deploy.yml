@@ -126,22 +126,46 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}} bash -s" <<'ENDSSH'
             set -e
+
             DOMAIN="$BRANCH.debugwithian.com"
             NGINX_FILE="/etc/nginx/sites-available/$BRANCH.conf"
+            WEBROOT="/var/www/$DOMAIN"
 
             # Find a free port for this branch
             PORT=$(seq 8090 8500 | grep -v -f <(sudo lsof -i -P -n | awk '{print $9}') | head -n1)
             echo "Using port: $PORT for branch: $BRANCH"
 
-            # Temporary HTTP-only Nginx config
+            # 1️⃣ Create webroot directory for Certbot
+            sudo mkdir -p "$WEBROOT"
+            sudo chown -R ubuntu:ubuntu "$WEBROOT"
+            echo "ok" | sudo tee "$WEBROOT/index.html" > /dev/null
+
+            # 2️⃣ Temporary HTTP-only Nginx config
             NGINX_TEMP_CONFIG="server {
                 listen 80;
                 listen [::]:80;
                 server_name $DOMAIN;
-                location / { return 200 'OK'; }
+                root $WEBROOT;
+                location / { try_files \$uri \$uri/ =404; }
             }"
 
-            # HTTPS + proxy config
+            if [ ! -f "$NGINX_FILE" ]; then
+                echo "Creating temporary HTTP-only config for $DOMAIN..."
+                echo "$NGINX_TEMP_CONFIG" | sudo tee "$NGINX_FILE" > /dev/null
+                sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
+            fi
+
+            # Test and reload Nginx
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            # 3️⃣ Request SSL certificate using webroot
+            if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+                echo "SSL certificate not found. Requesting cert for $DOMAIN..."
+                sudo certbot certonly --webroot -w "$WEBROOT" -d "$DOMAIN" --non-interactive --agree-tos -m ddiamanterbitwilio@gmail.com || true
+            fi
+
+            # 4️⃣ Final HTTPS + proxy config
             NGINX_FINAL_CONFIG="server {
                 listen 80;
                 listen [::]:80;
@@ -152,10 +176,12 @@ jobs:
                 listen 443 ssl http2;
                 listen [::]:443 ssl http2;
                 server_name $DOMAIN;
+
                 ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
                 ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
                 include /etc/letsencrypt/options-ssl-nginx.conf;
                 ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
                 location / {
                     proxy_pass http://localhost:$PORT;
                     proxy_set_header Host \$host;
@@ -165,32 +191,18 @@ jobs:
                 }
             }"
 
-            # 1️⃣ Create temp HTTP-only config if missing
-            if [ ! -f "$NGINX_FILE" ]; then
-                echo "Creating temporary HTTP-only config for $DOMAIN..."
-                echo "$NGINX_TEMP_CONFIG" | sudo tee "$NGINX_FILE" > /dev/null
-                sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
-                sudo systemctl reload nginx || true
-            fi
-
-            # 2️⃣ Request SSL certificate if missing
-            if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
-                echo "SSL certificate not found. Requesting cert for $DOMAIN..."
-                sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m ddiamanterbitwilio@gmail.com || true
-            fi
-
-            # 3️⃣ Overwrite Nginx config with HTTPS proxy if cert now exists
             if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
-                echo "Writing final HTTPS proxy config..."
+                echo "Writing final HTTPS proxy config for $DOMAIN..."
                 echo "$NGINX_FINAL_CONFIG" | sudo tee "$NGINX_FILE" > /dev/null
                 sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
             else
                 echo "SSL cert for $DOMAIN still missing. Keeping temporary HTTP-only config."
             fi
 
-            # 4️⃣ Test and reload Nginx
+            # 5️⃣ Test and reload Nginx safely
             sudo nginx -t && sudo systemctl reload nginx
-          ENDSSH
+      ENDSSH
+
      
   deploy:
     name: 🚀 Deploy to AWS (prod_v2)
