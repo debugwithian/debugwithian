@@ -122,6 +122,8 @@ jobs:
           ssh-keyscan -H 3.232.21.89 >> ~/.ssh/known_hosts
 
       - name: Deploy Dynamic Branch Environment
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}} bash -s" <<'ENDSSH'
             set -e
@@ -138,7 +140,7 @@ jobs:
             # 2️⃣ Clone or pull the branch from GitHub
             if [ ! -d "$APP_DIR/.git" ]; then
                 echo "Cloning branch $BRANCH into $APP_DIR..."
-                git clone --branch "$BRANCH" git@github.com:YOUR_USERNAME/YOUR_REPO.git "$APP_DIR"
+                git clone --branch "$BRANCH" git@github.com:$PAT_TOKEN/${{ github.repository }}.git "$APP_DIR"
             else
                 echo "Pulling latest changes for branch $BRANCH..."
                 cd "$APP_DIR"
