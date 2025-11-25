@@ -129,7 +129,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H 3.232.21.89 >> ~/.ssh/known_hosts
 
-            - name: Deploy Dynamic Branch Environment
+      - name: Deploy Dynamic Branch Environment
         run: |
           ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 <<'SSH_EOF'
             set -e
