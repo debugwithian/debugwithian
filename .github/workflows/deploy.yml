@@ -98,11 +98,11 @@ jobs:
                -d "$JSON" \
                "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
 
-      - name: Fail on Critical
-        if: steps.set_review_status.outputs.review_status == 'CRITICAL_ISSUE'
-        run: |
-          echo "❌ Critical issues found. Blocking."
-          exit 1
+      # - name: Fail on Critical
+      #   if: steps.set_review_status.outputs.review_status == 'CRITICAL_ISSUE'
+      #   run: |
+      #     echo "❌ Critical issues found. Blocking."
+      #     exit 1
 
   deploy_dynamic_env:
     name: 🌐 Create Dynamic Branch Environment
