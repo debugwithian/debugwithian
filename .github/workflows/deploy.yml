@@ -131,13 +131,21 @@ jobs:
               DOMAIN=\$BRANCH.debugwithian.com
               NGINX_FILE=/etc/nginx/sites-available/\$BRANCH.conf
 
+              # Remove old bad configs if present
+              if [ -f /etc/nginx/sites-enabled/unknown-branch.conf ]; then
+                sudo rm /etc/nginx/sites-enabled/unknown-branch.conf
+              fi
+              if [ -f /etc/nginx/sites-available/unknown-branch.conf ]; then
+                sudo rm /etc/nginx/sites-available/unknown-branch.conf
+              fi
+
               # Find a free port for this branch
               PORT=\$(
                 seq 8090 8500 | grep -v -f <(sudo lsof -i -P -n | grep LISTEN | awk '\''{print \$9}'\'') | head -n1
               )
               echo \"Using port: \$PORT for branch: \$BRANCH\"
 
-              # Temporary Nginx config for certbot
+              # Temporary Nginx config for certbot (no leading newline)
               NGINX_TEMP_CONFIG=\"server {
                   listen 80;
                   listen [::]:80;
@@ -147,7 +155,7 @@ jobs:
                   }
               }\"
 
-              # Final Nginx config with proxy
+              # Final Nginx config with proxy (no leading newline)
               NGINX_FINAL_CONFIG=\"server {
                   listen 80;
                   listen [::]:80;
