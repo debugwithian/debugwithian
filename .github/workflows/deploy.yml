@@ -5,11 +5,9 @@ on:
     branches:
       - prod_v2
     types: [opened, synchronize, reopened]
-
   push:
     branches:
       - prod_v2
-
   workflow_dispatch:
 
 jobs:
@@ -94,10 +92,10 @@ jobs:
           COMMENT=$(<ai_review_status.txt)
           JSON=$(jq -Rs --arg c "$COMMENT" '{body: $c}')
           curl -sS -X POST \
-               -H "Authorization: token $PAT_TOKEN" \
-               -H "Content-Type: application/json" \
-               -d "$JSON" \
-               "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+            -H "Authorization: token $PAT_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$JSON" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
 
       - name: Fail on Critical
         if: steps.set_review_status.outputs.review_status == 'CRITICAL_ISSUE'
@@ -125,17 +123,17 @@ jobs:
       - name: Deploy Dynamic Branch Environment
         run: |
           ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 <<'SSH_EOF'
-            set -e
-            BRANCH="${GITHUB_HEAD_REF}"
-            DOMAIN="$BRANCH.debugwithian.com"
+set -e
+BRANCH="${GITHUB_HEAD_REF}"
+DOMAIN="$BRANCH.debugwithian.com"
 
-            # Determine next available port (starting 8090)
-            PORT=$(comm -23 <(seq 8090 8500 | sort) <(sudo lsof -i -P -n | grep LISTEN | awk '{print $9}' | sed 's/.*://g' | sort -u) | head -n 1)
-            echo "Using port: $PORT for branch: $BRANCH"
+# Determine next available port (starting 8090)
+PORT=$(comm -23 <(seq 8090 8500 | sort) <(sudo lsof -i -P -n | grep LISTEN | awk '{print $9}' | sed 's/.*://g' | sort -u) | head -n 1)
+echo "Using port: $PORT for branch: $BRANCH"
 
-            # Create Nginx config
-            NGINX_FILE="/etc/nginx/sites-available/$BRANCH.conf"
-            sudo tee "$NGINX_FILE" > /dev/null <<'NGINX_CONF'
+# Create Nginx config
+NGINX_FILE="/etc/nginx/sites-available/$BRANCH.conf"
+sudo tee "$NGINX_FILE" > /dev/null <<'NGINX_CONF'
 server {
     listen 80;
     listen [::]:80;
@@ -166,26 +164,26 @@ server {
 }
 NGINX_CONF
 
-            sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
-            sudo systemctl reload nginx
+sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
+sudo systemctl reload nginx
 
-            sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m ddiamanterbitwilio@gmail.com || true
+sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m ddiamanterbitwilio@gmail.com || true
 
-            cd /home/ubuntu
-            if [ ! -d "$BRANCH" ]; then
-                git clone -b "$BRANCH" https://github.com/${GITHUB_REPOSITORY} "$BRANCH"
-            else
-                cd "$BRANCH"
-                git fetch origin "$BRANCH"
-                git reset --hard origin/"$BRANCH"
-            fi
+cd /home/ubuntu
+if [ ! -d "$BRANCH" ]; then
+    git clone -b "$BRANCH" https://github.com/${GITHUB_REPOSITORY} "$BRANCH"
+else
+    cd "$BRANCH"
+    git fetch origin "$BRANCH"
+    git reset --hard origin/"$BRANCH"
+fi
 
-            cd "/home/ubuntu/$BRANCH"
-            npm install
+cd "/home/ubuntu/$BRANCH"
+npm install
 
-            pm2 delete "$BRANCH" || true
-            pm2 start npm --name "$BRANCH" -- run start -- --port="$PORT"
-            pm2 save
+pm2 delete "$BRANCH" || true
+pm2 start npm --name "$BRANCH" -- run start -- --port="$PORT"
+pm2 save
 SSH_EOF
 
   deploy:
@@ -207,12 +205,12 @@ SSH_EOF
       - name: Deploy and restart app on AWS
         run: |
           ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "
-            set -e
-            cd /home/ubuntu
-            git fetch origin prod_v2
-            git reset --hard origin/prod_v2
-            npm install
-            pm2 restart all
-            pm2 save
-            echo '✅ Production deployment completed successfully'
-          "
+set -e
+cd /home/ubuntu
+git fetch origin prod_v2
+git reset --hard origin/prod_v2
+npm install
+pm2 restart all
+pm2 save
+echo '✅ Production deployment completed successfully'
+"
