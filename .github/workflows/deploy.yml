@@ -126,131 +126,131 @@ jobs:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}} PAT_TOKEN=${PAT_TOKEN} bash -s" <<'ENDSSH'
-          set -euo pipefail
+            set -euo pipefail
 
-          if [ -z "$PAT_TOKEN" ]; then
-            echo "❌ PAT_TOKEN not set. Aborting."
-            exit 1
-          fi
-
-          # --- Sanitize branch name ---
-          SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9.-]/-/g')
-          DOMAIN="$SAFE_BRANCH.debugwithian.com"
-          IMAGE="debugwithian/preview:latest"
-          TMPDIR="/tmp/$SAFE_BRANCH"
-
-          # --- Pick a free port ---
-          PORT=""
-          for p in {8090..8500}; do
-            if ! sudo lsof -iTCP:$p -sTCP:LISTEN >/dev/null; then
-              PORT=$p
-              break
+            if [ -z "$PAT_TOKEN" ]; then
+              echo "❌ PAT_TOKEN not set. Aborting."
+              exit 1
             fi
-          done
-          if [ -z "$PORT" ]; then
-            echo "❌ No free port found in range 8090-8500"
-            exit 1
-          fi
-          echo "Using port: $PORT for branch: $SAFE_BRANCH"
 
-          # --- Clone repo ---
-          rm -rf "$TMPDIR"
-          git ls-remote "https://$PAT_TOKEN@github.com/debugwithian/debugwithian.github.io.git" >/dev/null 2>&1 || {
-            echo "❌ Invalid PAT_TOKEN or access denied"
-            exit 1
-          }
-          git clone --depth 1 --branch "$BRANCH" "https://$PAT_TOKEN@github.com/debugwithian/debugwithian.github.io.git" "$TMPDIR"
+            # --- Sanitize branch name ---
+            SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9.-]/-/g')
+            DOMAIN="$SAFE_BRANCH.debugwithian.com"
+            IMAGE="debugwithian/preview:latest"
+            TMPDIR="/tmp/$SAFE_BRANCH"
 
-          # --- Ensure Dockerfile exists ---
-          if [ ! -f "$TMPDIR/Dockerfile" ]; then
-            echo "⚠️ No Dockerfile found, creating default minimal Dockerfile"
+            # --- Pick a free port ---
+            PORT=""
+            for p in {8090..8500}; do
+              if ! sudo lsof -iTCP:$p -sTCP:LISTEN >/dev/null; then
+                PORT=$p
+                break
+              fi
+            done
+            if [ -z "$PORT" ]; then
+              echo "❌ No free port found in range 8090-8500"
+              exit 1
+            fi
+            echo "Using port: $PORT for branch: $SAFE_BRANCH"
+
+            # --- Clone repo ---
+            rm -rf "$TMPDIR"
+            git ls-remote "https://$PAT_TOKEN@github.com/debugwithian/debugwithian.github.io.git" >/dev/null 2>&1 || {
+              echo "❌ Invalid PAT_TOKEN or access denied"
+              exit 1
+            }
+            git clone --depth 1 --branch "$BRANCH" "https://$PAT_TOKEN@github.com/debugwithian/debugwithian.github.io.git" "$TMPDIR"
+
+            # --- Ensure Dockerfile exists ---
+            if [ ! -f "$TMPDIR/Dockerfile" ]; then
+              echo "⚠️ No Dockerfile found, creating default minimal Dockerfile"
+              printf '%s\n' \
+                'FROM node:20-alpine' \
+                'WORKDIR /app' \
+                'COPY . .' \
+                'RUN npm install --production || true' \
+                'EXPOSE 3000' \
+                'CMD ["node", "server.js"]' > "$TMPDIR/Dockerfile"
+            fi
+
+            # --- Build Docker image ---
+            docker build -t "$IMAGE" "$TMPDIR" || true
+
+            # --- Stop old container ---
+            sudo docker rm -f "container-$SAFE_BRANCH" 2>/dev/null || true
+
+            # --- Run new container ---
+            sudo docker run -d \
+              --name "container-$SAFE_BRANCH" \
+              -p "$PORT":3000 \
+              "$IMAGE"
+
+            # --- Nginx paths ---
+            NGINX_FILE="/etc/nginx/sites-available/$SAFE_BRANCH.conf"
+            TEMP_NGINX="/etc/nginx/sites-available/$SAFE_BRANCH-temp.conf"
+            WWW_LETSENCRYPT="/var/www/letsencrypt"
+
+            sudo mkdir -p "$WWW_LETSENCRYPT"
+            sudo chmod 755 "$WWW_LETSENCRYPT"
+
+            # --- Temporary HTTP-only config for certbot ---
             printf '%s\n' \
-              'FROM node:20-alpine' \
-              'WORKDIR /app' \
-              'COPY . .' \
-              'RUN npm install --production || true' \
-              'EXPOSE 3000' \
-              'CMD ["node", "server.js"]' > "$TMPDIR/Dockerfile"
-          fi
+            'server {' \
+            '    listen 80;' \
+            '    server_name '"$DOMAIN"';' \
+            '    root '"$WWW_LETSENCRYPT"';' \
+            '}' | sudo tee "$TEMP_NGINX" >/dev/null
 
-          # --- Build Docker image ---
-          docker build -t "$IMAGE" "$TMPDIR" || true
+            sudo ln -sf "$TEMP_NGINX" /etc/nginx/sites-enabled/
+            sudo nginx -t
+            sudo systemctl restart nginx
 
-          # --- Stop old container ---
-          sudo docker rm -f "container-$SAFE_BRANCH" 2>/dev/null || true
-
-          # --- Run new container ---
-          sudo docker run -d \
-            --name "container-$SAFE_BRANCH" \
-            -p "$PORT":3000 \
-            "$IMAGE"
-
-          # --- Nginx paths ---
-          NGINX_FILE="/etc/nginx/sites-available/$SAFE_BRANCH.conf"
-          TEMP_NGINX="/etc/nginx/sites-available/$SAFE_BRANCH-temp.conf"
-          WWW_LETSENCRYPT="/var/www/letsencrypt"
-
-          sudo mkdir -p "$WWW_LETSENCRYPT"
-          sudo chmod 755 "$WWW_LETSENCRYPT"
-
-          # --- Temporary HTTP-only config for certbot ---
-          printf '%s\n' \
-          'server {' \
-          '    listen 80;' \
-          '    server_name '"$DOMAIN"';' \
-          '    root '"$WWW_LETSENCRYPT"';' \
-          '}' | sudo tee "$TEMP_NGINX" >/dev/null
-
-          sudo ln -sf "$TEMP_NGINX" /etc/nginx/sites-enabled/
-          sudo nginx -t
-          sudo systemctl restart nginx
-
-          # --- Request SSL certificate if DNS resolves ---
-          if host "$DOMAIN" >/dev/null 2>&1; then
-            if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
-              echo "Requesting certificate for $DOMAIN..."
-              sudo systemctl stop nginx
-              sudo certbot certonly --standalone --non-interactive --agree-tos \
-                -m ddiamanterbitwilio@gmail.com \
-                -d "$DOMAIN" || true
-              sudo systemctl start nginx
+            # --- Request SSL certificate if DNS resolves ---
+            if host "$DOMAIN" >/dev/null 2>&1; then
+              if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+                echo "Requesting certificate for $DOMAIN..."
+                sudo systemctl stop nginx
+                sudo certbot certonly --standalone --non-interactive --agree-tos \
+                  -m ddiamanterbitwilio@gmail.com \
+                  -d "$DOMAIN" || true
+                sudo systemctl start nginx
+              fi
+            else
+              echo "⚠️ DNS for $DOMAIN does not resolve. Skipping certbot."
             fi
-          else
-            echo "⚠️ DNS for $DOMAIN does not resolve. Skipping certbot."
-          fi
 
-          # --- Final HTTPS Nginx config using printf ---
-          printf '%s\n' \
-          'server {' \
-          '    listen 80;' \
-          '    server_name '"$DOMAIN"';' \
-          '    return 301 https://$host$request_uri;' \
-          '}' \
-          '' \
-          'server {' \
-          '    listen 443 ssl http2;' \
-          '    server_name '"$DOMAIN"';' \
-          '' \
-          '    ssl_certificate /etc/letsencrypt/live/'"$DOMAIN"'/fullchain.pem;' \
-          '    ssl_certificate_key /etc/letsencrypt/live/'"$DOMAIN"'/privkey.pem;' \
-          '    ssl_session_cache shared:SSL:10m;' \
-          '    ssl_session_timeout 10m;' \
-          '' \
-          '    location / {' \
-          '        proxy_pass http://127.0.0.1:'"$PORT"';' \
-          '        proxy_set_header Host $host;' \
-          '        proxy_set_header X-Real-IP $remote_addr;' \
-          '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
-          '        proxy_set_header X-Forwarded-Proto $scheme;' \
-          '    }' \
-          '}' | sudo tee "$NGINX_FILE" >/dev/null
+            # --- Final HTTPS Nginx config using printf ---
+            printf '%s\n' \
+            'server {' \
+            '    listen 80;' \
+            '    server_name '"$DOMAIN"';' \
+            '    return 301 https://$host$request_uri;' \
+            '}' \
+            '' \
+            'server {' \
+            '    listen 443 ssl http2;' \
+            '    server_name '"$DOMAIN"';' \
+            '' \
+            '    ssl_certificate /etc/letsencrypt/live/'"$DOMAIN"'/fullchain.pem;' \
+            '    ssl_certificate_key /etc/letsencrypt/live/'"$DOMAIN"'/privkey.pem;' \
+            '    ssl_session_cache shared:SSL:10m;' \
+            '    ssl_session_timeout 10m;' \
+            '' \
+            '    location / {' \
+            '        proxy_pass http://127.0.0.1:'"$PORT"';' \
+            '        proxy_set_header Host $host;' \
+            '        proxy_set_header X-Real-IP $remote_addr;' \
+            '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
+            '        proxy_set_header X-Forwarded-Proto $scheme;' \
+            '    }' \
+            '}' | sudo tee "$NGINX_FILE" >/dev/null
 
-          sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
-          sudo nginx -t
-          sudo systemctl reload nginx
+            sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
+            sudo nginx -t
+            sudo systemctl reload nginx
 
-          echo "✅ Docker preview for $SAFE_BRANCH deployed at https://$DOMAIN (Docker port $PORT)"
-      ENDSSH
+            echo "✅ Docker preview for $SAFE_BRANCH deployed at https://$DOMAIN (Docker port $PORT)"
+        ENDSSH
       
   deploy:
     name: 🚀 Deploy to AWS (prod_v2)
