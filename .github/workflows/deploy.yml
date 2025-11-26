@@ -125,7 +125,7 @@ jobs:
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}} bash -s" <<'ENDSSH'
+          ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}} PAT_TOKEN=${PAT_TOKEN} bash -s" <<'ENDSSH'
             set -euo pipefail
 
             # --- Sanitize branch name ---
@@ -136,17 +136,16 @@ jobs:
             IMAGE="debugwithian/preview:latest"
 
             # --- Find a free port (numeric sort for comm) ---
-            PORT=$(comm -23 \
-                <(seq 8090 8500 | sort -n) \
-                <(sudo lsof -i -P -n | awk '/LISTEN/ {print $9}' | sed 's/.*://' | sort -n) \
-                | head -n 1)
+            USED_PORTS=$(sudo lsof -i -P -n | awk '/LISTEN/ {print $9}' | sed 's/.*://' | sort -n || true)
+            PORT=$(comm -23 <(seq 8090 8500 | sort -n) <(echo "$USED_PORTS")) 
+            PORT=$(echo "$PORT" | head -n1)
             if [ -z "$PORT" ]; then
                 echo "❌ No free port found in range 8090-8500"
                 exit 1
             fi
             echo "Using port: $PORT for branch: $SAFE_BRANCH"
 
-            # --- Clone branch (optional, if needed for Docker build) ---
+            # --- Clone branch (if Docker build requires source) ---
             TMPDIR="/tmp/$SAFE_BRANCH"
             rm -rf "$TMPDIR"
             git clone --depth 1 --branch "$BRANCH" "https://${PAT_TOKEN}@github.com/debugwithian/debugwithian.github.io.git" "$TMPDIR"
@@ -182,7 +181,7 @@ jobs:
             sudo nginx -t
             sudo systemctl restart nginx
 
-            # --- Obtain SSL certificate ---
+            # --- Obtain SSL certificate (standalone) ---
             if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
               echo "Requesting certificate for $DOMAIN..."
               sudo systemctl stop nginx
