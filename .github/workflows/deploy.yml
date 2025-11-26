@@ -126,25 +126,28 @@ jobs:
           ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}} bash -s" <<'ENDSSH'
             set -e
 
-            # Sanitize branch name for nginx & DNS
+            IMAGE="your-real-docker-image:latest"
+
+            # Sanitize branch name
             SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9.-]/-/g')
             DOMAIN="$SAFE_BRANCH.debugwithian.com"
 
-            # Assign free port for Docker container
-            PORT=$(comm -23 <(seq 8090 8500) <(sudo lsof -i -P -n | grep LISTEN | awk '{print $9}' | sed 's/.*://') | head -n 1)
+            # Find free port (sorted)
+            PORT=$(comm -23 \
+              <(seq 8090 8500 | sort) \
+              <(sudo lsof -i -P -n | awk '/LISTEN/ {print $9}' | sed 's/.*://' | sort -n) \
+              | head -n 1)
 
             echo "Using port: $PORT for branch: $SAFE_BRANCH"
 
-            # Start Docker container for branch
+            # Start docker container
             sudo docker rm -f "container-$SAFE_BRANCH" || true
             sudo docker run -d \
               --name "container-$SAFE_BRANCH" \
               -p $PORT:3000 \
-              yourdocker/repo:latest
+              "$IMAGE"
 
-            # ------------------------------
-            # 1) Create temporary HTTP config for Certbot
-            # ------------------------------
+            # Temporary HTTP for certbot
             TEMP_NGINX="/etc/nginx/sites-available/$SAFE_BRANCH-temp.conf"
             echo "server {
               listen 80;
@@ -156,9 +159,7 @@ jobs:
             sudo nginx -t
             sudo systemctl restart nginx
 
-            # ------------------------------
-            # 2) Request SSL Certificate (standalone is required for Docker)
-            # ------------------------------
+            # SSL via standalone
             if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
               echo "Requesting certificate for $DOMAIN..."
               sudo systemctl stop nginx
@@ -168,9 +169,7 @@ jobs:
               sudo systemctl start nginx
             fi
 
-            # ------------------------------
-            # 3) Create final Nginx HTTPS reverse proxy
-            # ------------------------------
+            # Final Nginx HTTPS reverse proxy
             FINAL_NGINX="/etc/nginx/sites-available/$SAFE_BRANCH.conf"
             echo "server {
               listen 80;
@@ -200,7 +199,6 @@ jobs:
 
             echo "✅ Docker preview for $SAFE_BRANCH deployed at https://$DOMAIN (Docker port $PORT)"
           ENDSSH
-
 
   deploy:
     name: 🚀 Deploy to AWS (prod_v2)
