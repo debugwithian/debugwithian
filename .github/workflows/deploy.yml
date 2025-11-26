@@ -129,7 +129,7 @@ jobs:
           set -euo pipefail
 
           # --- Inputs ---
-          BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}}
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}}"
           PAT_TOKEN="${PAT_TOKEN:-}"
 
           if [ -z "$PAT_TOKEN" ]; then
