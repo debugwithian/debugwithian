@@ -25,7 +25,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq curl
+        run: sudo apt-get update && sudo apt-get install -y jq curl git
 
       - name: Validate secrets
         env:
@@ -136,19 +136,16 @@ jobs:
             # Clone branch
             rm -rf /tmp/$BRANCH
             git clone --branch "$BRANCH" git@github.com:$PAT_TOKEN/debugwithian/debugwithian.github.io.git "/tmp/$BRANCH"
-
             cd "/tmp/$BRANCH"
 
             # Build Docker image
-            docker build -t "$IMAGE_NAME" .
+            docker build -t "$IMAGE_NAME" . || true
 
             # Stop old container
-            if docker ps -a --format '{{.Names}}' | grep "^$IMAGE_NAME$"; then
-              docker rm -f "$IMAGE_NAME"
-            fi
+            docker rm -f "$IMAGE_NAME" || true
 
             # Run new container
-            docker run -d --name "$IMAGE_NAME" -p $PORT:3000 "$IMAGE_NAME"
+            docker run -d --name "$IMAGE_NAME" -p $PORT:3000 -v /tmp/$BRANCH:/app -w /app node:20-alpine sh -c "npm install && npm start"
 
             # Configure Nginx
             NGINX_FILE="/etc/nginx/sites-available/$SAFE_BRANCH.conf"
@@ -165,7 +162,6 @@ jobs:
                     proxy_set_header X-Forwarded-Proto \$scheme;
                 }
             }"
-
             echo "$NGINX_CONFIG" | sudo tee "$NGINX_FILE" > /dev/null
             sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
             sudo nginx -t && sudo systemctl reload nginx
@@ -194,7 +190,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H 3.232.21.89 >> ~/.ssh/known_hosts
 
-      - name: Deploy and restart app on AWS
+      - name: Deploy and restart app on AWS (PM2)
         run: |
           ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 '
             set -e
