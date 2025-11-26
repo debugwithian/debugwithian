@@ -125,66 +125,82 @@ jobs:
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}} PAT_TOKEN=${PAT_TOKEN} bash -s" <<'ENDSSH'
-            set -euo pipefail
+          ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "bash -s" <<'ENDSSH'
+          set -euo pipefail
 
-            # --- Sanitize branch name ---
-            SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9.-]/-/g')
-            DOMAIN="$SAFE_BRANCH.debugwithian.com"
+          # --- Inputs ---
+          BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}}
+          PAT_TOKEN="${PAT_TOKEN:-}"
 
-            # --- Docker image ---
-            IMAGE="debugwithian/preview:latest"
+          if [ -z "$PAT_TOKEN" ]; then
+            echo "❌ PAT_TOKEN not set. Aborting."
+            exit 1
+          fi
 
-            # --- Find a free port (both sides sorted numerically for comm) ---
-            USED_PORTS=$(sudo lsof -i -P -n | awk '/LISTEN/ {print $9}' | sed 's/.*://' | sort -n || true)
-            PORT=$(comm -23 <(seq 8090 8500 | sort -n) <(echo "$USED_PORTS" | sort -n))
-            PORT=$(echo "$PORT" | head -n1)
-            if [ -z "$PORT" ]; then
-                echo "❌ No free port found in range 8090-8500"
-                exit 1
+          # --- Sanitize branch name for DNS/NGINX ---
+          SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9.-]/-/g')
+          DOMAIN="$SAFE_BRANCH.debugwithian.com"
+          IMAGE="debugwithian/preview:latest"
+          TMPDIR="/tmp/$SAFE_BRANCH"
+
+          # --- Pick a free port ---
+          PORT=""
+          for p in {8090..8500}; do
+            if ! sudo lsof -iTCP:$p -sTCP:LISTEN >/dev/null; then
+              PORT=$p
+              break
             fi
-            echo "Using port: $PORT for branch: $SAFE_BRANCH"
+          done
 
-            # --- Clone branch if needed ---
-            TMPDIR="/tmp/$SAFE_BRANCH"
-            rm -rf "$TMPDIR"
-            if [ -z "${PAT_TOKEN:-}" ]; then
-              echo "❌ PAT_TOKEN not set. Aborting."
-              exit 1
-            fi
-            git clone --depth 1 --branch "$BRANCH" "https://${PAT_TOKEN}@github.com/debugwithian/debugwithian.github.io.git" "$TMPDIR"
+          if [ -z "$PORT" ]; then
+            echo "❌ No free port found in range 8090-8500"
+            exit 1
+          fi
+          echo "Using port: $PORT for branch: $SAFE_BRANCH"
 
-            # --- Build Docker image ---
-            docker build -t "$IMAGE" "$TMPDIR" || true
+          # --- Clone repo if needed for Docker build ---
+          rm -rf "$TMPDIR"
+          git ls-remote "https://$PAT_TOKEN@github.com/debugwithian/debugwithian.github.io.git" >/dev/null 2>&1 || {
+            echo "❌ Invalid PAT_TOKEN or access denied"
+            exit 1
+          }
+          git clone --depth 1 --branch "$BRANCH" "https://$PAT_TOKEN@github.com/debugwithian/debugwithian.github.io.git" "$TMPDIR"
 
-            # --- Stop old container ---
-            sudo docker rm -f "container-$SAFE_BRANCH" || true
+          # --- Build Docker image ---
+          docker build -t "$IMAGE" "$TMPDIR" || true
 
-            # --- Run new container ---
-            sudo docker run -d \
-              --name "container-$SAFE_BRANCH" \
-              -p "$PORT":3000 \
-              "$IMAGE"
+          # --- Stop old container ---
+          sudo docker rm -f "container-$SAFE_BRANCH" 2>/dev/null || true
 
-            # --- Nginx paths ---
-            NGINX_FILE="/etc/nginx/sites-available/$SAFE_BRANCH.conf"
-            TEMP_NGINX="/etc/nginx/sites-available/$SAFE_BRANCH-temp.conf"
-            WWW_LETSENCRYPT="/var/www/letsencrypt"
+          # --- Run new container ---
+          sudo docker run -d \
+            --name "container-$SAFE_BRANCH" \
+            -p "$PORT":3000 \
+            "$IMAGE"
 
-            sudo mkdir -p "$WWW_LETSENCRYPT"
-            sudo chmod 755 "$WWW_LETSENCRYPT"
+          # --- Nginx paths ---
+          NGINX_FILE="/etc/nginx/sites-available/$SAFE_BRANCH.conf"
+          TEMP_NGINX="/etc/nginx/sites-available/$SAFE_BRANCH-temp.conf"
+          WWW_LETSENCRYPT="/var/www/letsencrypt"
 
-            # --- Temporary HTTP-only config for Certbot ---
-            echo "server {
-              listen 80;
-              server_name $DOMAIN;
-              root $WWW_LETSENCRYPT;
-            }" | sudo tee "$TEMP_NGINX" >/dev/null
+          sudo mkdir -p "$WWW_LETSENCRYPT"
+          sudo chmod 755 "$WWW_LETSENCRYPT"
 
-            sudo ln -sf "$TEMP_NGINX" /etc/nginx/sites-enabled/
-            sudo nginx -t
-            sudo systemctl restart nginx
+          # --- Temporary HTTP-only config for certbot ---
+          echo "server {
+            listen 80;
+            server_name $DOMAIN;
+            root $WWW_LETSENCRYPT;
+          }" | sudo tee "$TEMP_NGINX" >/dev/null
 
+          sudo ln -sf "$TEMP_NGINX" /etc/nginx/sites-enabled/
+          sudo nginx -t
+          sudo systemctl restart nginx
+
+          # --- Check DNS resolves before requesting SSL ---
+          if ! host "$DOMAIN" >/dev/null 2>&1; then
+            echo "⚠️ DNS for $DOMAIN does not resolve. Skipping certbot."
+          else
             # --- Obtain SSL certificate ---
             if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
               echo "Requesting certificate for $DOMAIN..."
@@ -194,37 +210,38 @@ jobs:
                 -d "$DOMAIN" || true
               sudo systemctl start nginx
             fi
+          fi
 
-            # --- Final Nginx HTTPS reverse proxy ---
-            echo "server {
-              listen 80;
-              server_name $DOMAIN;
-              return 301 https://$DOMAIN\$request_uri;
+          # --- Final HTTPS Nginx config ---
+          echo "server {
+            listen 80;
+            server_name $DOMAIN;
+            return 301 https://\$host\$request_uri;
+          }
+
+          server {
+            listen 443 ssl http2;
+            server_name $DOMAIN;
+
+            ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+            ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+            ssl_session_cache shared:SSL:10m;
+            ssl_session_timeout 10m;
+
+            location / {
+              proxy_pass http://127.0.0.1:$PORT;
+              proxy_set_header Host \$host;
+              proxy_set_header X-Real-IP \$remote_addr;
+              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto \$scheme;
             }
+          }" | sudo tee "$NGINX_FILE" >/dev/null
 
-            server {
-              listen 443 ssl http2;
-              server_name $DOMAIN;
+          sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
+          sudo nginx -t
+          sudo systemctl reload nginx
 
-              ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-              ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-              ssl_session_cache shared:SSL:10m;
-              ssl_session_timeout 10m;
-
-              location / {
-                proxy_pass http://127.0.0.1:$PORT;
-                proxy_set_header Host \$host;
-                proxy_set_header X-Real-IP \$remote_addr;
-                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto \$scheme;
-              }
-            }" | sudo tee "$NGINX_FILE" >/dev/null
-
-            sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
-            sudo nginx -t
-            sudo systemctl reload nginx
-
-            echo "✅ Docker preview for $SAFE_BRANCH deployed at https://$DOMAIN (Docker port $PORT)"
+          echo "✅ Docker preview for $SAFE_BRANCH deployed at https://$DOMAIN (Docker port $PORT)"
           ENDSSH
 
   deploy:
