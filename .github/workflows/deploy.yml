@@ -224,13 +224,16 @@ jobs:
                 }
             }"
 
-            if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+            # Wait for cert to exist
+            if [ -e "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
                 echo "Writing final HTTPS proxy config for $DOMAIN..."
                 echo "$NGINX_FINAL_CONFIG" | sudo tee "$NGINX_FILE" > /dev/null
                 sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
+                sudo nginx -t && sudo systemctl reload nginx
             else
                 echo "SSL cert for $DOMAIN still missing. Keeping temporary HTTP-only config."
             fi
+
 
             # 9️⃣ Test and reload Nginx safely
             sudo nginx -t && sudo systemctl reload nginx
