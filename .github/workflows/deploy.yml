@@ -166,13 +166,13 @@ jobs:
           if [ ! -f "$TMPDIR/Dockerfile" ]; then
             echo "⚠️ No Dockerfile found, creating default minimal Dockerfile"
             cat <<'EOF' > "$TMPDIR/Dockerfile"
-          FROM node:20-alpine
-          WORKDIR /app
-          COPY . .
-          RUN npm install --production || true
-          EXPOSE 3000
-          CMD ["node", "server.js"]
-          EOF
+            FROM node:20-alpine
+            WORKDIR /app
+            COPY . .
+            RUN npm install --production || true
+            EXPOSE 3000
+            CMD ["node", "server.js"]
+            EOF
           fi
 
           # --- Build Docker image ---
@@ -196,11 +196,11 @@ jobs:
           sudo chmod 755 "$WWW_LETSENCRYPT"
 
           # --- Temporary HTTP-only config for certbot ---
-          echo "server {
+          echo 'server {
             listen 80;
-            server_name $DOMAIN;
-            root $WWW_LETSENCRYPT;
-          }" | sudo tee "$TEMP_NGINX" >/dev/null
+            server_name '"$DOMAIN"';
+            root '"$WWW_LETSENCRYPT"';
+          }' | sudo tee "$TEMP_NGINX" >/dev/null
 
           sudo ln -sf "$TEMP_NGINX" /etc/nginx/sites-enabled/
           sudo nginx -t
@@ -221,29 +221,29 @@ jobs:
           fi
 
           # --- Final HTTPS Nginx config ---
-          echo "server {
+          echo 'server {
             listen 80;
-            server_name $DOMAIN;
-            return 301 https://\$host\$request_uri;
+            server_name '"$DOMAIN"';
+            return 301 https://$host$request_uri;
           }
 
           server {
             listen 443 ssl http2;
-            server_name $DOMAIN;
+            server_name '"$DOMAIN"';
 
-            ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-            ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+            ssl_certificate /etc/letsencrypt/live/'"$DOMAIN"'/fullchain.pem;
+            ssl_certificate_key /etc/letsencrypt/live/'"$DOMAIN"'/privkey.pem;
             ssl_session_cache shared:SSL:10m;
             ssl_session_timeout 10m;
 
             location / {
-              proxy_pass http://127.0.0.1:$PORT;
-              proxy_set_header Host \$host;
-              proxy_set_header X-Real-IP \$remote_addr;
-              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto \$scheme;
+              proxy_pass http://127.0.0.1:'"$PORT"';
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
             }
-          }" | sudo tee "$NGINX_FILE" >/dev/null
+          }' | sudo tee "$NGINX_FILE" >/dev/null
 
           sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
           sudo nginx -t
