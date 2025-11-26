@@ -156,14 +156,18 @@ jobs:
                 npm install
             fi
 
-            # 4️⃣ Start the app in background on the free port (example: Node.js)
-            # Kill any previous process on this port
-            if lsof -i:$PORT | grep LISTEN; then
-                echo "Killing previous process on port $PORT..."
-                sudo fuser -k $PORT/tcp
+            # 4️⃣ Start the app on the free port using PM2
+            # Kill any previous PM2 process for this branch
+            if pm2 list | grep "$BRANCH"; then
+                echo "Stopping previous PM2 process for $BRANCH..."
+                pm2 delete "$BRANCH" || true
             fi
-            echo "Starting app on port $PORT..."
-            nohup npm start -- --port $PORT > "$APP_DIR/nohup.log" 2>&1 &
+
+            # Start the app with PM2 on the free port
+            echo "Starting app with PM2 on port $PORT..."
+            cd "$APP_DIR"
+            pm2 start npm --name "$BRANCH" -- start -- --port $PORT
+            pm2 save
 
             # 5️⃣ Create webroot for Certbot
             sudo mkdir -p "$WEBROOT"
