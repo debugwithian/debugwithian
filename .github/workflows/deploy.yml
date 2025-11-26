@@ -1,10 +1,10 @@
-name: Full Automation Pipeline (AI Code Review, Testing Environment Created, Auto Deployment)
+name: 🚀 Auto Deploy to AWS with AI Code Review (Groq)
 
 on:
   pull_request:
     branches:
       - prod_v2
-    types: [opened, synchronize, reopened, closed]
+    types: [opened, synchronize, reopened]
   push:
     branches:
       - prod_v2
@@ -52,7 +52,7 @@ jobs:
             echo "diff_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Run AI Code Review
+      - name: Run AI Code Review (Groq)
         id: run_ai
         if: steps.generate_diff.outputs.diff_exists == 'true'
         env:
@@ -60,7 +60,7 @@ jobs:
         run: |
           set -e
           DIFF=$(<diff.txt)
-          PROMPT="You are a strict senior engineer. Review the following git diff for logic, security, syntax, performance. Ignore YAML updates. Return Markdown with a final status: PASSED, NEEDS IMPROVEMENTS, or CRITICAL.\n\n$DIFF"
+          PROMPT="You are a strict senior engineer. Review the following git diff for logic, security, syntax, performance. Return Markdown with a final status: PASSED, NEEDS IMPROVEMENTS, or CRITICAL.\n\n$DIFF"
           AI_COMMENT=$(curl -sS --fail https://api.groq.com/openai/v1/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $GROQ_API_KEY" \
@@ -105,7 +105,7 @@ jobs:
           exit 1
 
   deploy_dynamic_env:
-    name: 🌐 Create Testing Environment
+    name: 🌐 Create Dynamic Branch Environment
     runs-on: ubuntu-latest
     needs: ai_code_review
     if: github.event_name == 'pull_request' && needs.ai_code_review.outputs.review_status != 'CRITICAL_ISSUE'
@@ -121,7 +121,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H 3.232.21.89 >> ~/.ssh/known_hosts
 
-      - name: Deploy Testing Environment
+      - name: Deploy Dynamic Branch Environment
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
@@ -138,16 +138,7 @@ jobs:
             PORT=$(seq 8090 8500 | grep -v -f <(sudo lsof -i -P -n | awk '{print $9}') | head -n1)
             echo "Using port: $PORT for branch: $BRANCH"
 
-            # 2️⃣ Ensure webroot exists and is owned by ubuntu (fully deletable)
-            sudo mkdir -p "$WEBROOT"
-            sudo chown -R ubuntu:ubuntu "$WEBROOT"
-            sudo chmod 755 "$WEBROOT"
-            echo "ok" | tee "$WEBROOT/index.html" > /dev/null
-
-            # Ensure /app directory exists
-            mkdir -p "$APP_DIR"
-
-            # 3️⃣ Clone or pull the branch from GitHub
+            # 2️⃣ Clone or pull the branch from GitHub
             if [ ! -d "$APP_DIR/.git" ]; then
                 echo "Cloning branch $BRANCH into $APP_DIR..."
                 git clone --branch "$BRANCH" git@github.com:$PAT_TOKEN/${{ github.repository }}.git "$APP_DIR"
@@ -158,20 +149,26 @@ jobs:
                 git reset --hard "origin/$BRANCH"
             fi
 
-            # 4️⃣ Install dependencies (example: Node.js)
+            # 3️⃣ Install dependencies (example: Node.js)
             cd "$APP_DIR"
             if [ -f "package.json" ]; then
                 echo "Installing Node.js dependencies..."
                 npm install
             fi
 
-            # 5️⃣ Start the app in background on the free port (example: Node.js)
+            # 4️⃣ Start the app in background on the free port (example: Node.js)
+            # Kill any previous process on this port
             if lsof -i:$PORT | grep LISTEN; then
                 echo "Killing previous process on port $PORT..."
                 sudo fuser -k $PORT/tcp
             fi
             echo "Starting app on port $PORT..."
             nohup npm start -- --port $PORT > "$APP_DIR/nohup.log" 2>&1 &
+
+            # 5️⃣ Create webroot for Certbot
+            sudo mkdir -p "$WEBROOT"
+            sudo chown -R ubuntu:ubuntu "$WEBROOT"
+            echo "ok" | tee "$WEBROOT/index.html" > /dev/null
 
             # 6️⃣ Temporary HTTP-only Nginx config
             NGINX_TEMP_CONFIG="server {
@@ -224,16 +221,13 @@ jobs:
                 }
             }"
 
-            # Wait for cert to exist
-            if [ -e "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+            if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
                 echo "Writing final HTTPS proxy config for $DOMAIN..."
                 echo "$NGINX_FINAL_CONFIG" | sudo tee "$NGINX_FILE" > /dev/null
                 sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
-                sudo nginx -t && sudo systemctl reload nginx
             else
                 echo "SSL cert for $DOMAIN still missing. Keeping temporary HTTP-only config."
             fi
-
 
             # 9️⃣ Test and reload Nginx safely
             sudo nginx -t && sudo systemctl reload nginx
@@ -270,66 +264,3 @@ jobs:
             pm2 save
             echo "✅ Production deployment completed successfully"
           '
-
-      - name: Delete Testing Environment (Last Merged Branch)
-        run: |
-          # Ensure full history is fetched
-          git fetch --unshallow || true
-          git fetch origin prod_v2 --tags --prune
-
-          # Get last merge commit on prod_v2
-          LAST_MERGE_COMMIT=$(git log origin/prod_v2 --merges -1 --pretty=%H)
-          echo "Last merge commit: $LAST_MERGE_COMMIT"
-
-          if [ -z "$LAST_MERGE_COMMIT" ]; then
-            echo "No merge commit found on prod_v2. Skipping cleanup."
-            exit 0
-          fi
-
-          # Get the branch that was merged
-          LAST_MERGED_BRANCH=$(git log -1 --pretty=%P $LAST_MERGE_COMMIT \
-            | xargs -n1 git name-rev --name-only \
-            | grep -v "prod_v2" \
-            | sed "s#^remotes/origin/##")
-          echo "Last merged branch: $LAST_MERGED_BRANCH"
-
-          if [ -z "$LAST_MERGED_BRANCH" ]; then
-            echo "No merged branch found. Skipping cleanup."
-            exit 0
-          fi
-
-          # SSH cleanup
-          ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "
-            set -e
-            BRANCH='$LAST_MERGED_BRANCH'
-            SAFE_BRANCH=\$(echo \"\$BRANCH\" | sed 's/[^a-zA-Z0-9]/-/g')
-            DOMAIN=\"\$SAFE_BRANCH.debugwithian.com\"
-            WEBROOT=\"/var/www/\$DOMAIN\"
-            APP_DIR=\"/var/www/\$DOMAIN/app\"
-            NGINX_FILE=\"/etc/nginx/sites-available/\$BRANCH.conf\"
-
-            echo '🧹 Cleaning preview environment for branch: '\$BRANCH
-            echo 'Domain: '\$DOMAIN
-
-            # Stop any running Node processes
-            pkill -f "\$APP_DIR" || true
-
-            # Stop PM2 process if exists
-            pm2 delete "\$BRANCH" || true
-
-            # Remove webroot + app
-            sudo rm -rf "\$WEBROOT"
-
-            # Remove Nginx config (sites-enabled first)
-            sudo rm -f "/etc/nginx/sites-enabled/\$BRANCH.conf"
-            sudo rm -f "\$NGINX_FILE"
-
-            # Delete SSL certificate
-            sudo certbot delete --cert-name "\$DOMAIN" --non-interactive || true
-
-            # Test and reload Nginx
-            sudo nginx -t && sudo systemctl reload nginx
-
-            echo \"🎉 Successfully cleaned dynamic environment: https://\$DOMAIN\"
-          "
-
