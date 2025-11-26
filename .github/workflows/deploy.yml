@@ -133,7 +133,7 @@ jobs:
             exit 1
           fi
 
-          # --- Sanitize branch name for DNS/NGINX ---
+          # --- Sanitize branch name ---
           SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9.-]/-/g')
           DOMAIN="$SAFE_BRANCH.debugwithian.com"
           IMAGE="debugwithian/preview:latest"
@@ -154,8 +154,12 @@ jobs:
           fi
           echo "Using port: $PORT for branch: $SAFE_BRANCH"
 
-          # --- Clone repo if needed for Docker build ---
-          rm -rf "$TMPDIR"
+          # --- Clean tmp directory safely ---
+          if [ -d "$TMPDIR" ]; then
+            sudo rm -rf "$TMPDIR" || sudo chown -R $USER:$USER "$TMPDIR" && rm -rf "$TMPDIR"
+          fi
+
+          # --- Clone repo for Docker build ---
           git ls-remote "https://$PAT_TOKEN@github.com/debugwithian/debugwithian.github.io.git" >/dev/null 2>&1 || {
             echo "❌ Invalid PAT_TOKEN or access denied"
             exit 1
@@ -194,10 +198,7 @@ jobs:
           sudo systemctl restart nginx
 
           # --- Check DNS resolves before requesting SSL ---
-          if ! host "$DOMAIN" >/dev/null 2>&1; then
-            echo "⚠️ DNS for $DOMAIN does not resolve. Skipping certbot."
-          else
-            # --- Obtain SSL certificate ---
+          if host "$DOMAIN" >/dev/null 2>&1; then
             if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
               echo "Requesting certificate for $DOMAIN..."
               sudo systemctl stop nginx
@@ -206,6 +207,8 @@ jobs:
                 -d "$DOMAIN" || true
               sudo systemctl start nginx
             fi
+          else
+            echo "⚠️ DNS for $DOMAIN does not resolve. Skipping certbot."
           fi
 
           # --- Final HTTPS Nginx config ---
