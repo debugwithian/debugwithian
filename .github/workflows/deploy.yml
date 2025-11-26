@@ -165,14 +165,13 @@ jobs:
           # --- Ensure Dockerfile exists ---
           if [ ! -f "$TMPDIR/Dockerfile" ]; then
             echo "⚠️ No Dockerfile found, creating default minimal Dockerfile"
-            cat <<'EOF' > "$TMPDIR/Dockerfile"
-            FROM node:20-alpine
-            WORKDIR /app
-            COPY . .
-            RUN npm install --production || true
-            EXPOSE 3000
-            CMD ["node", "server.js"]
-            EOF
+            printf '%s\n' \
+              'FROM node:20-alpine' \
+              'WORKDIR /app' \
+              'COPY . .' \
+              'RUN npm install --production || true' \
+              'EXPOSE 3000' \
+              'CMD ["node", "server.js"]' > "$TMPDIR/Dockerfile"
           fi
 
           # --- Build Docker image ---
