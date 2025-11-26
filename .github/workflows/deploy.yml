@@ -221,7 +221,6 @@ jobs:
           sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
           sudo nginx -t
           sudo systemctl reload nginx
-
           echo "✅ Docker preview for $SAFE_BRANCH deployed at https://$DOMAIN (Docker port $PORT)"
           ENDSSH
       
