@@ -126,53 +126,153 @@ jobs:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF##refs/heads/}} bash -s" <<'ENDSSH'
-            set -e
+            set -euo pipefail
 
-            SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g')
+            # --- Inputs from environment ---
+            # BRANCH is injected from the ssh command line
+            # PAT_TOKEN should be available in the remote environment via the action secrets or env
+            SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/^-*//;s/-*$//')
             DOMAIN="$SAFE_BRANCH.debugwithian.com"
             IMAGE_NAME="preview-$SAFE_BRANCH"
-            PORT=$(seq 8090 8500 | grep -v -f <(sudo lsof -i -P -n | awk '{print $9}') | head -n1)
 
-            # Clone branch
-            rm -rf /tmp/$BRANCH
-            git clone --branch "$BRANCH" git@github.com:$PAT_TOKEN/debugwithian/debugwithian.github.io.git "/tmp/$BRANCH"
-            cd "/tmp/$BRANCH"
+            # --- Find a free port on the host (8090-8500) ---
+            # Use ss to list listening tcp ports (robust)
+            mkdir -p /var/www/letsencrypt
+            chmod 755 /var/www/letsencrypt
 
-            # Build Docker image
+            USED_PORTS=$(ss -ltn 2>/dev/null | awk 'NR>1 {print $4}' | awk -F':' '{print $NF}' | sort -u || true)
+            PORT=$(comm -23 <(seq 8090 8500) <(echo "$USED_PORTS") | head -n1 || true)
+            if [ -z "$PORT" ]; then
+              echo "❌ No free port found in range 8090-8500"
+              exit 1
+            fi
+
+            echo "Using port: $PORT"
+
+            # --- Clone branch (use PAT correctly) ---
+            TMPDIR="/tmp/$SAFE_BRANCH"
+            rm -rf "$TMPDIR"
+            # Ensure PAT_TOKEN is present
+            if [ -z "${PAT_TOKEN:-}" ]; then
+              echo "❌ PAT_TOKEN is not set on the remote. Aborting."
+              exit 1
+            fi
+
+            git clone --depth 1 --branch "$BRANCH" "https://${PAT_TOKEN}@github.com/debugwithian/debugwithian.github.io.git" "$TMPDIR"
+            cd "$TMPDIR"
+
+            # --- Build Docker image (best-effort) ---
             docker build -t "$IMAGE_NAME" . || true
 
-            # Stop old container
-            docker rm -f "$IMAGE_NAME" || true
+            # --- Stop old container if exists ---
+            docker rm -f "$IMAGE_NAME" 2>/dev/null || true
 
-            # Run new container
-            docker run -d --name "$IMAGE_NAME" -p $PORT:3000 -v /tmp/$BRANCH:/app -w /app node:20-alpine sh -c "npm install && npm start"
+            # --- Run new container ---
+            # Map host $PORT to container 3000. Use restart=unless-stopped so it survives reboots.
+            docker run -d --name "$IMAGE_NAME" --restart unless-stopped -p "$PORT":3000 -v "$TMPDIR":/app -w /app node:20-alpine sh -c "npm ci --prefer-offline --no-audit --progress=false && npm start" || {
+              echo "❌ Docker failed to start $IMAGE_NAME"
+              exit 1
+            }
 
-            # Configure Nginx
+            # --- Nginx config paths ---
             NGINX_FILE="/etc/nginx/sites-available/$SAFE_BRANCH.conf"
-            NGINX_CONFIG="server {
+            WWW_LETSENCRYPT="/var/www/letsencrypt"
+
+            # --- Write an HTTP-only config that also serves ACME challenges ---
+            HTTP_CONFIG="server {
                 listen 80;
                 listen [::]:80;
                 server_name $DOMAIN;
 
+                # Serve Let's Encrypt HTTP-01 challenges from the well-known directory
+                location /.well-known/acme-challenge/ {
+                    root $WWW_LETSENCRYPT;
+                    try_files \$uri =404;
+                }
+
+                # Proxy everything else to the Docker app
                 location / {
-                    proxy_pass http://localhost:$PORT;
+                    proxy_pass http://127.0.0.1:$PORT;
                     proxy_set_header Host \$host;
                     proxy_set_header X-Real-IP \$remote_addr;
                     proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
                     proxy_set_header X-Forwarded-Proto \$scheme;
+                    proxy_http_version 1.1;
+                    proxy_set_header Connection "";
                 }
             }"
-            echo "$NGINX_CONFIG" | sudo tee "$NGINX_FILE" > /dev/null
-            sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
-            sudo nginx -t && sudo systemctl reload nginx
 
-            # Certbot SSL
+            echo "$HTTP_CONFIG" | sudo tee "$NGINX_FILE" > /dev/null
+            sudo ln -sf "$NGINX_FILE" /etc/nginx/sites-enabled/
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            # --- Obtain or renew certificate using certbot webroot ---
+            # Ensure webroot exists and permissions are correct
+            sudo mkdir -p "$WWW_LETSENCRYPT"
+            sudo chown -R www-data:www-data "$WWW_LETSENCRYPT" || true
+            sudo chmod 755 "$WWW_LETSENCRYPT"
+
             if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
-              sudo certbot certonly --webroot -w /tmp --non-interactive --agree-tos -m ddiamanterbitwilio@gmail.com -d "$DOMAIN" || true
+              echo "Requesting certificate for $DOMAIN (this may fail if DNS is not pointed yet)..."
+              sudo certbot certonly --webroot -w "$WWW_LETSENCRYPT" --non-interactive --agree-tos -m ddiamanterbitwilio@gmail.com -d "$DOMAIN" || true
+            else
+              echo "Certificate already exists for $DOMAIN, skipping certbot issuance."
             fi
 
-            echo "✅ Docker preview for $BRANCH deployed at https://$DOMAIN on port $PORT"
+            # --- If cert exists, write final HTTPS-enabled config (overwrite) ---
+            if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ] && [ -f "/etc/letsencrypt/live/$DOMAIN/privkey.pem" ]; then
+              SSL_CONFIG="server {
+                  listen 80;
+                  listen [::]:80;
+                  server_name $DOMAIN;
+
+                  # Redirect HTTP to HTTPS (preserve challenge path)
+                  location /.well-known/acme-challenge/ {
+                      root $WWW_LETSENCRYPT;
+                      try_files \$uri =404;
+                  }
+
+                  location / {
+                      return 301 https://\$host\$request_uri;
+                  }
+              }
+
+              server {
+                  listen 443 ssl http2;
+                  listen [::]:443 ssl http2;
+                  server_name $DOMAIN;
+
+                  ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+                  ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+                  ssl_session_cache shared:SSL:10m;
+                  ssl_session_timeout 10m;
+
+                  # Proxy to Docker app
+                  location / {
+                      proxy_pass http://127.0.0.1:$PORT;
+                      proxy_set_header Host \$host;
+                      proxy_set_header X-Real-IP \$remote_addr;
+                      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                      proxy_set_header X-Forwarded-Proto \$scheme;
+                      proxy_http_version 1.1;
+                      proxy_set_header Connection "";
+                  }
+              }"
+
+              echo "$SSL_CONFIG" | sudo tee "$NGINX_FILE" > /dev/null
+              sudo nginx -t
+              sudo systemctl reload nginx
+
+              echo "✅ Docker preview for $BRANCH deployed at https://$DOMAIN on port $PORT"
+            else
+              echo "⚠️ Certificate not available for $DOMAIN. HTTP preview available at http://$DOMAIN (port forwarded to $PORT)."
+              echo "If DNS is not yet pointed to this host, make sure the domain resolves to this server before running certbot."
+              echo "You can retry certbot manually: sudo certbot certonly --webroot -w $WWW_LETSENCRYPT -d $DOMAIN"
+              echo "✅ Docker preview for $BRANCH deployed at http://$DOMAIN on port $PORT"
+            fi
           ENDSSH
+
 
   deploy:
     name: 🚀 Deploy to AWS (prod_v2)
