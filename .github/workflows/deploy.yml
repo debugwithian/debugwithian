@@ -320,16 +320,25 @@ jobs:
           ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "bash -s" <<ENDSSH
           set -euo pipefail
 
-          # Loop over all merged branches
-          for BRANCH in $MERGED_BRANCHES; do
+          # Deduplicate merged branches
+          PROCESSED=()
+          for BRANCH in $(echo "$MERGED_BRANCHES" | tr ' ' '\n' | sort -u); do
             SAFE_BRANCH="\${BRANCH//[^a-zA-Z0-9.-]/-}"  # sanitize branch name
+
+            # Skip if already processed
+            if [[ " \${PROCESSED[*]} " == *" \$SAFE_BRANCH "* ]]; then
+              continue
+            fi
+            PROCESSED+=("\$SAFE_BRANCH")
+
             CONTAINER_NAME="container-\$SAFE_BRANCH"
             NGINX_CONF="/etc/nginx/sites-available/\$SAFE_BRANCH.conf"
+            NGINX_ENABLED="/etc/nginx/sites-enabled/\$SAFE_BRANCH.conf"
             TMPDIR="/tmp/\$SAFE_BRANCH"
 
             echo "Cleaning preview environment for branch: \$BRANCH"
 
-            # Stop and remove Docker container if it exists
+            # Stop and remove Docker container if exists
             if sudo docker ps -a --format '{{.Names}}' | grep -q "^$CONTAINER_NAME\$"; then
               echo "Stopping and removing Docker container: \$CONTAINER_NAME"
               sudo docker rm -f "\$CONTAINER_NAME"
@@ -342,13 +351,19 @@ jobs:
               sudo docker rmi -f "\$IMAGE_NAME" || true
             fi
 
-            # Remove NGINX config
+            # Remove NGINX config if exists
             if [ -f "\$NGINX_CONF" ]; then
               echo "Removing NGINX config: \$NGINX_CONF"
               sudo rm -f "\$NGINX_CONF"
             fi
 
-            # Remove temp folder
+            # Remove symlink in sites-enabled if exists
+            if [ -L "\$NGINX_ENABLED" ]; then
+              echo "Removing NGINX symlink: \$NGINX_ENABLED"
+              sudo rm -f "\$NGINX_ENABLED"
+            fi
+
+            # Remove temp folder if exists
             if [ -d "\$TMPDIR" ]; then
               echo "Removing temp folder: \$TMPDIR"
               sudo rm -rf "\$TMPDIR"
