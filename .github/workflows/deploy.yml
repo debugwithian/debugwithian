@@ -360,4 +360,4 @@ jobs:
           sudo systemctl reload nginx
 
           echo "✅ All merged preview environments cleaned up."
-      ENDSSH
+          ENDSSH
