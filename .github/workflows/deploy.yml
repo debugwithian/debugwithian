@@ -320,7 +320,7 @@ jobs:
           ssh -i ~/.ssh/id_rsa ubuntu@3.232.21.89 "bash -s" <<'ENDSSH'
           set -euo pipefail
 
-          # Export MERGED_BRANCHES safely
+          # Ensure MERGED_BRANCHES is set
           MERGED_BRANCHES="${MERGED_BRANCHES:-}"
 
           # Deduplicate merged branches
@@ -373,9 +373,12 @@ jobs:
             fi
           done
 
-          # Reload NGINX after all removals
-          sudo nginx -t
-          sudo systemctl reload nginx
-
-          echo "✅ All merged preview environments cleaned up."
+          # Reload NGINX safely after all removals
+          if sudo nginx -t; then
+            sudo systemctl reload nginx
+            echo "✅ All merged preview environments cleaned up and NGINX reloaded."
+          else
+            echo "⚠️ NGINX configuration test failed. Please check manually."
+            exit 1
+          fi
           ENDSSH
